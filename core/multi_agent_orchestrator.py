@@ -66,9 +66,8 @@ class MultiAgentOrchestrator:
         Returns:
             TradeIntent or None
         """
-        # Minimum bars: 30 (reduced from 50 to account for weekends/holidays)
-        if bars.empty or len(bars) < 30:
-            logger.warning(f"Insufficient data for {symbol} ({len(bars)} bars, need 30+)")
+        if bars.empty or len(bars) < 50:
+            logger.warning(f"Insufficient data for {symbol}")
             return None
         
         try:
@@ -109,13 +108,9 @@ class MultiAgentOrchestrator:
             )
             
             if final_intent:
-                logger.info(f"[SIGNAL] {symbol} | has_signal=True | "
-                          f"action={final_intent.direction.value} | "
-                          f"confidence={final_intent.confidence:.2f} | "
-                          f"agent={final_intent.agent_name}")
-            else:
-                logger.info(f"[SIGNAL] {symbol} | has_signal=False | "
-                          f"action=None | confidence=0.00 | reason=no_intents")
+                logger.info(f"{symbol}: Final intent - {final_intent.direction.value} "
+                          f"(confidence: {final_intent.confidence:.2f}, "
+                          f"agent: {final_intent.agent_name})")
             
             return final_intent
             

@@ -25,7 +25,7 @@ class RLPredictor:
         model_path: str,
         agent_type: str = 'grpo',
         smoothing_alpha: float = 0.3,
-        min_confidence: float = 0.6
+        min_confidence: float = 0.3
     ):
         """
         Initialize RL predictor
@@ -193,10 +193,10 @@ class RLPredictor:
         """
         abs_action = abs(action)
         
-        # Determine direction
-        if action < -0.3:
+        # Determine direction - Lowered threshold for more active trading
+        if action < -0.2:
             direction = 'SHORT'  # BUY PUT
-        elif action > 0.3:
+        elif action > 0.2:
             direction = 'LONG'  # BUY CALL
         else:
             direction = 'FLAT'
@@ -204,12 +204,12 @@ class RLPredictor:
         # Calculate confidence from action magnitude
         # Map [-1, 1] to [0, 1] confidence
         if direction == 'FLAT':
-            confidence = 0.5  # Neutral confidence
+            confidence = 0.3  # Neutral confidence (lowered)
         else:
             # Confidence increases with distance from 0
-            # Action of 0.3 = 0.5 confidence, action of 1.0 = 1.0 confidence
-            confidence = 0.5 + (abs_action - 0.3) * (0.5 / 0.7)  # Scale 0.3-1.0 to 0.5-1.0
-            confidence = max(0.5, min(1.0, confidence))
+            # Action of 0.2 = 0.3 confidence, action of 1.0 = 1.0 confidence
+            confidence = 0.3 + (abs_action - 0.2) * (0.7 / 0.8)  # Scale 0.2-1.0 to 0.3-1.0
+            confidence = max(0.3, min(1.0, confidence))
         
         return direction, confidence
     

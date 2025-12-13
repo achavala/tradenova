@@ -1,0 +1,214 @@
+"""
+RL Engine Visualizer Page
+Shows RL model state, predictions, and training metrics
+"""
+import streamlit as st
+import pandas as pd
+import plotly.graph_objects as go
+from pathlib import Path
+
+from dashboard.theme import apply_hybrid_theme
+from dashboard.utils.error_handler import handle_page_errors
+
+@handle_page_errors
+def render_rl_engine_page():
+    """Render RL Engine visualization page"""
+    apply_hybrid_theme()
+    
+    # FIX #5: Apply chart container styling
+    st.markdown("""
+    <style>
+    .chart-card {
+        background-color: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        margin-bottom: 1.5rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("### 🤖 RL Engine Status")
+    
+    # Check if RL model exists
+    model_paths = [
+        Path("models/grpo_final.zip"),
+        Path("models/ppo_final.zip")
+    ]
+    
+    model_found = False
+    model_name = None
+    for path in model_paths:
+        if path.exists():
+            model_found = True
+            model_name = path.name
+            break
+    
+    if model_found:
+        st.success(f"✅ RL Model Loaded: {model_name}")
+        
+        # Model info
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Model Type", "GRPO" if "grpo" in model_name.lower() else "PPO")
+        with col2:
+            st.metric("State Dimensions", "52")
+        with col3:
+            st.metric("Action Space", "Continuous [-1, 1]")
+        
+        st.markdown("---")
+        
+        # ISSUE #1 & #2: Use data router for RL snapshot (cached)
+        from core.data.data_router import get_data_router
+        data_router = get_data_router()
+        
+        debug_snapshot = data_router.get_live_rl_snapshot()
+        
+        if debug_snapshot:
+            st.markdown("#### 📊 RL Agent Debug Snapshot")
+            
+            # FIX #5: Wrap in chart container
+            with st.container():
+                st.markdown('<div class="chart-card">', unsafe_allow_html=True)
+                
+                # Display state distribution if available
+                if isinstance(debug_snapshot, dict):
+                    if 'state_distribution' in debug_snapshot:
+                        state_data = debug_snapshot['state_distribution']
+                        if isinstance(state_data, (list, dict)):
+                            state_df = pd.DataFrame([state_data] if isinstance(state_data, dict) else state_data)
+                            st.dataframe(state_df, use_container_width=True)
+                    
+                    # Display recent predictions if available
+                    if 'recent_predictions' in debug_snapshot:
+                        pred_data = debug_snapshot['recent_predictions']
+                        if isinstance(pred_data, (list, dict)):
+                            pred_df = pd.DataFrame([pred_data] if isinstance(pred_data, dict) else pred_data)
+                            st.dataframe(pred_df, use_container_width=True)
+                    
+                    # Display action distribution
+                    if 'action_distribution' in debug_snapshot:
+                        action_data = debug_snapshot['action_distribution']
+                        if isinstance(action_data, (list, dict)):
+                            action_df = pd.DataFrame([action_data] if isinstance(action_data, dict) else action_data)
+                            st.dataframe(action_df, use_container_width=True)
+                    
+                    # Display reward history if available
+                    if 'reward_history' in debug_snapshot:
+                        reward_data = debug_snapshot['reward_history']
+                        if isinstance(reward_data, list) and len(reward_data) > 0:
+                            # Create reward curve chart
+                            fig = go.Figure()
+                            fig.add_trace(go.Scatter(
+                                y=reward_data[-100:],  # Last 100 rewards
+                                mode='lines',
+                                name='Reward History',
+                                line=dict(color='#1abc9c', width=2)
+                            ))
+                            fig.update_layout(
+                                title="RL Reward History (Last 100)",
+                                xaxis_title="Step",
+                                yaxis_title="Reward",
+                                height=300
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.json(debug_snapshot)
+                
+                st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            st.info("RL agent debug snapshot not available (agent loaded but no snapshot method)")
+                # FIX #2: Get debug snapshot
+                try:
+                    if hasattr(agent, 'get_debug_snapshot'):
+                        debug_snapshot = agent.get_debug_snapshot()
+                    elif hasattr(agent, 'get_state'):
+                        debug_snapshot = agent.get_state()
+                    else:
+                        debug_snapshot = None
+                    
+                    if debug_snapshot:
+                        st.markdown("#### 📊 RL Agent Debug Snapshot")
+                        
+                        # FIX #5: Wrap in chart container
+                        with st.container():
+                            st.markdown('<div class="chart-card">', unsafe_allow_html=True)
+                            
+                            # Display state distribution if available
+                            if isinstance(debug_snapshot, dict):
+                                if 'state_distribution' in debug_snapshot:
+                                    state_data = debug_snapshot['state_distribution']
+                                    if isinstance(state_data, (list, dict)):
+                                        state_df = pd.DataFrame([state_data] if isinstance(state_data, dict) else state_data)
+                                        st.dataframe(state_df, use_container_width=True)
+                                
+                                # Display recent predictions if available
+                                if 'recent_predictions' in debug_snapshot:
+                                    pred_data = debug_snapshot['recent_predictions']
+                                    if isinstance(pred_data, (list, dict)):
+                                        pred_df = pd.DataFrame([pred_data] if isinstance(pred_data, dict) else pred_data)
+                                        st.dataframe(pred_df, use_container_width=True)
+                                
+                                # Display action distribution
+                                if 'action_distribution' in debug_snapshot:
+                                    action_data = debug_snapshot['action_distribution']
+                                    if isinstance(action_data, (list, dict)):
+                                        action_df = pd.DataFrame([action_data] if isinstance(action_data, dict) else action_data)
+                                        st.dataframe(action_df, use_container_width=True)
+                                
+                                # Display reward history if available
+                                if 'reward_history' in debug_snapshot:
+                                    reward_data = debug_snapshot['reward_history']
+                                    if isinstance(reward_data, list) and len(reward_data) > 0:
+                                        # Create reward curve chart
+                                        fig = go.Figure()
+                                        fig.add_trace(go.Scatter(
+                                            y=reward_data[-100:],  # Last 100 rewards
+                                            mode='lines',
+                                            name='Reward History',
+                                            line=dict(color='#1abc9c', width=2)
+                                        ))
+                                        fig.update_layout(
+                                            title="RL Reward History (Last 100)",
+                                            xaxis_title="Step",
+                                            yaxis_title="Reward",
+                                            height=300
+                                        )
+                                        st.plotly_chart(fig, use_container_width=True)
+                            else:
+                                st.json(debug_snapshot)
+                            
+                            st.markdown('</div>', unsafe_allow_html=True)
+                    else:
+                        st.info("RL agent debug snapshot not available (agent loaded but no snapshot method)")
+                except Exception as e:
+                    st.warning(f"⚠️ Error getting debug snapshot: {str(e)[:100]}")
+            else:
+                st.info("RL agent not loaded - model file exists but agent initialization failed")
+        except Exception as e:
+            st.warning(f"⚠️ Could not load RL agent debug info: {str(e)[:100]}")
+            import traceback
+            st.code(traceback.format_exc())
+        
+        st.markdown("---")
+        
+        # Recent predictions
+        st.markdown("#### 📊 Recent Predictions")
+        st.info("RL predictions are integrated into the multi-agent orchestrator")
+        
+        # Training metrics (if available)
+        training_log_path = Path("logs/rl_training.log")
+        if training_log_path.exists():
+            st.markdown("#### 📈 Training Metrics")
+            
+            # FIX #5: Wrap chart in styled container
+            with st.container():
+                st.markdown('<div class="chart-card">', unsafe_allow_html=True)
+                st.info("Training logs available - would display training curves here")
+                st.markdown('</div>', unsafe_allow_html=True)
+        
+    else:
+        st.warning("⚠️ No RL model found. Train a model first.")
+        if st.button("🚀 Train RL Model"):
+            st.info("Training would be initiated here")
+

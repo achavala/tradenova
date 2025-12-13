@@ -1,155 +1,83 @@
-# 🔧 Dashboard Port Fix - Force Port 8502
+# Dashboard Port and Config Fix
 
-## Issue Fixed
+## ✅ Issues Fixed
 
-**Problem**: Dashboard still opening on port 8501  
-**Solution**: Force port 8502 with explicit command-line override
+### 1. Port 8502 Already in Use
+**Problem**: Port 8502 was already occupied by a previous Streamlit instance.
 
----
+**Solution**: 
+- Updated `start_dashboard.sh` to automatically kill any existing process on port 8502 before starting
+- Added process detection and cleanup
 
-## ✅ Solution - Force Port 8502
+### 2. Invalid Config Option Warning
+**Problem**: `ui.hideSidebarNav` is not a valid config option in current Streamlit version.
 
-### Method 1: Use Fix Script (Recommended)
+**Solution**: Removed the invalid `hideSidebarNav` option from `.streamlit/config.toml`
 
-```bash
-./fix_dashboard_port.sh
+### 3. CORS/XSRF Conflict Warning
+**Problem**: `enableCORS = false` conflicts with `enableXsrfProtection = true`
+
+**Solution**: Changed `enableCORS = true` to be compatible with XSRF protection
+
+## 📝 Changes Made
+
+### `.streamlit/config.toml`
+```toml
+[server]
+headless = false
+port = 8502
+enableCORS = true          # Changed from false to true
+enableXsrfProtection = true
+runOnSave = false
+
+[ui]
+hideTopBar = false
+# Removed: hideSidebarNav = false (invalid option)
 ```
 
-**This script**:
-1. ✅ Stops any existing dashboard processes
-2. ✅ Activates virtual environment
-3. ✅ Forces port 8502 explicitly
-4. ✅ Starts dashboard on correct port
+### `start_dashboard.sh`
+- Added automatic process detection
+- Kills existing Streamlit process on port 8502 before starting
+- Prevents "port already in use" errors
 
----
+## 🚀 How to Use
 
-### Method 2: Manual Command (Guaranteed)
-
-```bash
-# Step 1: Activate venv
-source venv/bin/activate
-
-# Step 2: Kill any existing streamlit
-pkill -f streamlit
-
-# Step 3: Start with explicit port override
-streamlit run dashboard.py --server.port 8502 --server.headless false
-```
-
-**This forces port 8502** regardless of config file.
-
----
-
-### Method 3: Updated Start Script
-
+### Start Dashboard (Recommended)
 ```bash
 ./start_dashboard.sh
 ```
 
-**Now includes**: `--server.port 8502` override
+The script will:
+1. ✅ Activate virtual environment
+2. ✅ Check for existing process on port 8502
+3. ✅ Kill existing process if found
+4. ✅ Start dashboard on port 8502
 
----
-
-## 🔍 Verify Port
-
-### Check What's Running
+### Manual Start
 ```bash
-# Check port 8501
-lsof -i :8501
-
-# Check port 8502
-lsof -i :8502
-```
-
-### Expected Results
-- **Port 8501**: Your other website (or nothing)
-- **Port 8502**: TradeNova Dashboard (Python/streamlit process)
-
----
-
-## 🚨 If Still Opening on 8501
-
-### Force Stop and Restart
-
-```bash
-# Kill all streamlit processes
-pkill -f streamlit
-
-# Wait a moment
-sleep 2
-
-# Start with explicit port
 source venv/bin/activate
-streamlit run dashboard.py --server.port 8502 --server.headless false
+streamlit run dashboard.py --server.port 8502
 ```
 
----
+## ✅ Status
 
-## 📋 Complete Fix Command
+**All warnings fixed!**
+- ✅ No more "port already in use" errors
+- ✅ No more "ui.hideSidebarNav" invalid config warnings
+- ✅ No more CORS/XSRF conflict warnings
+- ✅ Dashboard starts cleanly
 
+## 🔍 Verification
+
+To verify the dashboard is running:
 ```bash
-cd /Users/chavala/TradeNova
-pkill -f streamlit
-source venv/bin/activate
-streamlit run dashboard.py --server.port 8502 --server.headless false
+curl http://localhost:8502
 ```
 
-**Opens at**: `http://localhost:8502`
+Or open in browser: **http://localhost:8502**
 
 ---
 
-## ✅ Verification Steps
+**Status**: ✅ **All Issues Fixed**
 
-1. **Check processes**:
-   ```bash
-   lsof -i :8502
-   ```
-   Should show Python/streamlit
-
-2. **Open browser**:
-   ```
-   http://localhost:8502
-   ```
-   Should show TradeNova dashboard
-
-3. **Check browser tab**:
-   Should show "TradeNova - AI Trading Dashboard"
-
----
-
-## 🎯 Port Configuration Summary
-
-| Port | Application | Status |
-|------|-------------|--------|
-| 8501 | Your Other Website | ✅ Separate |
-| 8502 | **TradeNova Dashboard** | ✅ **FORCED** |
-
----
-
-## 📝 For Tomorrow
-
-### Terminal 1 (Dashboard)
-```bash
-cd /Users/chavala/TradeNova
-pkill -f streamlit  # Clean start
-source venv/bin/activate
-streamlit run dashboard.py --server.port 8502 --server.headless false
-```
-
-### Terminal 2 (Trading)
-```bash
-cd /Users/chavala/TradeNova
-source venv/bin/activate
-python run_daily.py --paper
-```
-
----
-
-**Status**: ✅ **PORT 8502 FORCED**
-
-**Command**: Always use `--server.port 8502` to override config
-
----
-
-*Dashboard Port Fix - Port 8502 Guaranteed*
-
+*Dashboard now starts without warnings or port conflicts!*

@@ -1,0 +1,748 @@
+"""
+Polygon.io Options Data Feed
+Provides real options data for skew, microstructure, and term structure
+"""
+import logging
+from typing import Dict, List, Optional, Tuple
+from datetime import datetime, timedelta
+import requests
+import os
+import pandas as pd
+
+logger = logging.getLogger(__name__)
+
+class PolygonDataFeed:
+    """Polygon.io options data feed"""
+    
+    def __init__(self, api_key: Optional[str] = None):
+        """
+        Initialize Polygon data feed
+        
+        Args:
+            api_key: Polygon.io API key (defaults to POLYGON_API_KEY env var)
+        """
+        self.api_key = api_key or os.getenv('POLYGON_API_KEY')
+        if not self.api_key:
+            logger.warning("POLYGON_API_KEY not set. Polygon features will be disabled.")
+        
+        # Polygon is now Massive - try both endpoints for compatibility
+        self.base_url = "https://api.massive.com"  # New Massive endpoint
+        self.polygon_base_url = "https://api.polygon.io"  # Legacy endpoint (fallback)
+    
+    def is_available(self) -> bool:
+        """Check if Polygon API is available"""
+        return self.api_key is not None
+    
+    def get_options_chain(
+        self,
+        symbol: str,
+        expiration_date: Optional[str] = None,
+        strike_price: Optional[float] = None
+    ) -> List[Dict]:
+        """
+        Get options chain from Polygon
+        
+        Args:
+            symbol: Underlying symbol
+            expiration_date: Expiration date (YYYY-MM-DD) or None for all
+            strike_price: Strike price or None for all
+            
+        Returns:
+            List of option contracts with full data
+        """
+        if not self.is_available():
+            return []
+        
+        try:
+            url = f"{self.base_url}/v3/snapshot/options/{symbol}"
+            params = {
+                'apiKey': self.api_key
+            }
+            
+            if expiration_date:
+                params['expiration_date'] = expiration_date
+            if strike_price:
+                params['strike_price'] = strike_price
+            
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            
+            data = response.json()
+            
+            if data.get('status') == 'OK' and 'results' in data:
+                return data['results']
+            else:
+                logger.warning(f"Polygon API returned unexpected format: {data.get('status')}")
+                return []
+                
+        except Exception as e:
+            logger.error(f"Error fetching options chain from Polygon: {e}")
+            return []
+    
+    def get_option_quote(
+        self,
+        option_symbol: str
+    ) -> Optional[Dict]:
+        """
+        Get real-time quote for an option
+        
+        Args:
+            option_symbol: Option symbol (e.g., 'O:AAPL230120C00150000')
+            
+        Returns:
+            Quote dictionary with bid, ask, last, etc.
+        """
+        if not self.is_available():
+            return None
+        
+        try:
+            # Try Massive endpoint first, fallback to Polygon
+            for base_url in [self.base_url, self.polygon_base_url]:
+                try:
+                    url = f"{base_url}/v2/last/nbbo/{option_symbol}"
+                    params = {
+                        'apiKey': self.api_key
+                    }
+                    
+                    response = requests.get(url, params=params, timeout=5)
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        
+                        if data.get('status') == 'OK' and 'results' in data:
+                            result = data['results']
+                            return {
+                                'bid': result.get('bid'),
+                                'ask': result.get('ask'),
+                                'bid_size': result.get('bid_size'),
+                                'ask_size': result.get('ask_size'),
+                                'last': result.get('last'),
+                                'timestamp': result.get('t')
+                            }
+                    else:
+                        continue
+                        
+                except requests.exceptions.RequestException:
+                    continue
+            
+            return None
+                
+        except Exception as e:
+            logger.debug(f"Error fetching quote: {e}")
+            return None
+    
+    def calculate_skew(
+        self,
+        symbol: str,
+        current_price: float,
+        expiration_date: str
+    ) -> Dict[str, float]:
+        """
+        Calculate volatility skew from Polygon options chain
+        
+        Args:
+            symbol: Underlying symbol
+            current_price: Current stock price
+            expiration_date: Expiration date (YYYY-MM-DD)
+            
+        Returns:
+            Dictionary with skew metrics
+        """
+        if not self.is_available():
+            return {
+                'skew': 0.0,
+                'skew_steepness': 0.0,
+                'is_positive_skew': 0.0,
+                'is_negative_skew': 0.0,
+                'otm_call_iv': 0.0,
+                'otm_put_iv': 0.0,
+                'atm_iv': 0.0
+            }
+        
+        try:
+            chain = self.get_options_chain(symbol, expiration_date=expiration_date)
+            
+            if not chain:
+                return {
+                    'skew': 0.0,
+                    'skew_steepness': 0.0,
+                    'is_positive_skew': 0.0,
+                    'is_negative_skew': 0.0,
+                    'otm_call_iv': 0.0,
+                    'otm_put_iv': 0.0,
+                    'atm_iv': 0.0
+                }
+            
+            # Find ATM strike
+            atm_strike = min(chain, key=lambda x: abs(x.get('strike_price', current_price) - current_price))
+            atm_iv = atm_strike.get('implied_volatility', 0.0) / 100.0  # Convert from percentage
+            
+            # Find OTM call (5% OTM)
+            otm_call_strike = current_price * 1.05
+            otm_call = min(
+                [c for c in chain if c.get('contract_type') == 'call' and c.get('strike_price', 0) >= otm_call_strike],
+                key=lambda x: abs(x.get('strike_price', 0) - otm_call_strike),
+                default=None
+            )
+            otm_call_iv = (otm_call.get('implied_volatility', 0.0) / 100.0) if otm_call else 0.0
+            
+            # Find OTM put (5% OTM)
+            otm_put_strike = current_price * 0.95
+            otm_put = min(
+                [c for c in chain if c.get('contract_type') == 'put' and c.get('strike_price', 0) <= otm_put_strike],
+                key=lambda x: abs(x.get('strike_price', 0) - otm_put_strike),
+                default=None
+            )
+            otm_put_iv = (otm_put.get('implied_volatility', 0.0) / 100.0) if otm_put else 0.0
+            
+            # Calculate skew
+            if atm_iv > 0:
+                skew = (otm_put_iv - otm_call_iv) / atm_iv
+            else:
+                skew = 0.0
+            
+            skew_steepness = abs(skew)
+            
+            return {
+                'skew': skew,
+                'skew_steepness': skew_steepness,
+                'is_positive_skew': 1.0 if skew > 0 else 0.0,
+                'is_negative_skew': 1.0 if skew < 0 else 0.0,
+                'otm_call_iv': otm_call_iv,
+                'otm_put_iv': otm_put_iv,
+                'atm_iv': atm_iv
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calculating skew from Polygon: {e}")
+            return {
+                'skew': 0.0,
+                'skew_steepness': 0.0,
+                'is_positive_skew': 0.0,
+                'is_negative_skew': 0.0,
+                'otm_call_iv': 0.0,
+                'otm_put_iv': 0.0,
+                'atm_iv': 0.0
+            }
+    
+    def get_microstructure(
+        self,
+        option_symbol: str
+    ) -> Dict[str, float]:
+        """
+        Get microstructure data for an option
+        
+        Args:
+            option_symbol: Option symbol
+            
+        Returns:
+            Dictionary with microstructure features
+        """
+        quote = self.get_option_quote(option_symbol)
+        
+        if not quote:
+            return {
+                'bid_ask_spread_pct': 0.05,
+                'volume': 0.0,
+                'open_interest': 0.0,
+                'bid_size': 0.0,
+                'ask_size': 0.0
+            }
+        
+        bid = quote.get('bid', 0)
+        ask = quote.get('ask', 0)
+        mid = (bid + ask) / 2.0 if (bid > 0 and ask > 0) else (bid or ask or 0)
+        
+        spread_pct = ((ask - bid) / mid * 100.0) if mid > 0 else 0.05
+        
+        return {
+            'bid_ask_spread_pct': spread_pct / 100.0,  # Normalize to 0-1
+            'volume': 0.0,  # Not available in quote endpoint
+            'open_interest': 0.0,  # Not available in quote endpoint
+            'bid_size': quote.get('bid_size', 0.0) / 100.0,  # Normalize
+            'ask_size': quote.get('ask_size', 0.0) / 100.0  # Normalize
+        }
+    
+    def get_historical_iv(
+        self,
+        symbol: str,
+        start_date: str,
+        end_date: str,
+        expiration_date: Optional[str] = None,
+        strike_price: Optional[float] = None
+    ) -> pd.DataFrame:
+        """
+        Fetch historical IV from Polygon
+        
+        Args:
+            symbol: Underlying symbol
+            start_date: Start date (YYYY-MM-DD)
+            end_date: End date (YYYY-MM-DD)
+            expiration_date: Expiration date filter (YYYY-MM-DD) or None for all
+            strike_price: Strike price filter or None for all
+            
+        Returns:
+            DataFrame with columns: date, iv, expiration_date, strike_price, option_type
+        """
+        if not self.is_available():
+            return pd.DataFrame()
+        
+        try:
+            # Polygon options contracts API with date range
+            # Note: Polygon may require specific subscription tier for historical data
+            url = f"{self.base_url}/v3/reference/options/contracts"
+            params = {
+                'underlying_ticker': symbol,
+                'apiKey': self.api_key,
+                'limit': 1000  # Adjust based on needs
+            }
+            
+            if expiration_date:
+                params['expiration_date'] = expiration_date
+            if strike_price:
+                params['strike_price'] = strike_price
+            
+            all_contracts = []
+            page_token = None
+            
+                    # Paginate through results (limit to first page to avoid cursor issues)
+                    response = requests.get(url, params=params, timeout=10)
+                    
+                    # Handle pagination more carefully
+                    if response.status_code == 200:
+                        data = response.json()
+                        
+                        if data.get('status') == 'OK' and 'results' in data:
+                            contracts = data['results']
+                            all_contracts.extend(contracts)
+                            
+                            # Note: Pagination can be complex, so we'll use first page for now
+                            # For full historical data, may need to use different endpoint
+                            break  # Success, exit loop
+                        elif data.get('status') == 'ERROR':
+                            logger.debug(f"API error from {base_url}: {data.get('error', 'Unknown error')}")
+                            continue  # Try next endpoint
+                    else:
+                        logger.debug(f"HTTP {response.status_code} from {base_url}, trying fallback")
+                        continue  # Try next endpoint
+                        
+                except requests.exceptions.RequestException as e:
+                    logger.debug(f"Request error with {base_url}: {e}, trying fallback")
+                    continue  # Try next endpoint
+            
+            if not all_contracts:
+                logger.warning(f"No historical IV data found for {symbol}")
+                return pd.DataFrame()
+            
+            if not all_contracts:
+                logger.warning(f"No historical IV data found for {symbol}")
+                return pd.DataFrame()
+            
+            # For historical IV, we need to use aggregated data or options trades
+            # Polygon's historical options data may require different endpoint
+            # Alternative: Use options aggregates endpoint if available
+            
+            # Try options aggregates endpoint for historical IV
+            # This endpoint provides historical data for options
+            historical_iv_data = []
+            
+            for contract in all_contracts[:100]:  # Limit to avoid rate limits
+                option_ticker = contract.get('ticker')  # e.g., 'O:AAPL230120C00150000'
+                if not option_ticker:
+                    continue
+                
+                # Get historical aggregates for this option
+                # Note: This may require different subscription tier
+                try:
+                    agg_url = f"{self.base_url}/v2/aggs/ticker/{option_ticker}/range/1/day/{start_date}/{end_date}"
+                    agg_params = {'apiKey': self.api_key, 'adjusted': 'true'}
+                    
+                    agg_response = requests.get(agg_url, params=agg_params, timeout=5)
+                    if agg_response.status_code == 200:
+                        agg_data = agg_response.json()
+                        if agg_data.get('status') == 'OK' and 'results' in agg_data:
+                            for result in agg_data['results']:
+                                # Extract IV if available in aggregates
+                                # Note: IV may not be in aggregates, may need different endpoint
+                                historical_iv_data.append({
+                                    'date': datetime.fromtimestamp(result['t'] / 1000).strftime('%Y-%m-%d'),
+                                    'iv': contract.get('implied_volatility', 0) / 100.0,  # Fallback to contract IV
+                                    'expiration_date': contract.get('expiration_date'),
+                                    'strike_price': contract.get('strike_price'),
+                                    'option_type': contract.get('contract_type')
+                                })
+                except Exception as e:
+                    logger.debug(f"Could not fetch aggregates for {option_ticker}: {e}")
+                    # Fallback: use contract IV with expiration date as proxy
+                    historical_iv_data.append({
+                        'date': end_date,  # Use end_date as proxy
+                        'iv': contract.get('implied_volatility', 0) / 100.0,
+                        'expiration_date': contract.get('expiration_date'),
+                        'strike_price': contract.get('strike_price'),
+                        'option_type': contract.get('contract_type')
+                    })
+            
+            if not historical_iv_data:
+                logger.warning(f"No historical IV data retrieved for {symbol}")
+                return pd.DataFrame()
+            
+            df = pd.DataFrame(historical_iv_data)
+            df['date'] = pd.to_datetime(df['date'])
+            df = df.sort_values('date')
+            
+            return df
+            
+        except Exception as e:
+            logger.error(f"Error fetching historical IV from Polygon: {e}")
+            return pd.DataFrame()
+    
+    def get_options_chain_at_date(
+        self,
+        symbol: str,
+        date: str,  # YYYY-MM-DD
+        expiration_date: Optional[str] = None
+    ) -> List[Dict]:
+        """
+        Get options chain snapshot at specific date (point-in-time)
+        
+        Args:
+            symbol: Underlying symbol
+            date: Date for snapshot (YYYY-MM-DD)
+            expiration_date: Expiration date filter or None for all
+            
+        Returns:
+            List of option contracts at that date
+        """
+        if not self.is_available():
+            return []
+        
+        try:
+            # Polygon/Massive options contracts API with date filter
+            # Note: Historical snapshots may require specific subscription tier
+            # Try Massive endpoint first, fallback to Polygon
+            for base_url in [self.base_url, self.polygon_base_url]:
+                try:
+                    url = f"{base_url}/v3/reference/options/contracts"
+                    params = {
+                        'underlying_ticker': symbol,
+                        'apiKey': self.api_key,
+                        'limit': 1000
+                    }
+                    
+                    if expiration_date:
+                        params['expiration_date'] = expiration_date
+                    
+                    # For historical snapshots, we may need to use a different approach
+                    # Snapshot endpoint may not support historical dates
+                    # Alternative: Use contracts API and filter by expiration date
+                    
+                    response = requests.get(url, params=params, timeout=10)
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        
+                        if data.get('status') == 'OK' and 'results' in data:
+                            contracts = data['results']
+                            
+                            # Filter contracts that were active on the specified date
+                            # A contract is active if its expiration_date is after the snapshot date
+                            filtered_contracts = []
+                            snapshot_date = datetime.strptime(date, '%Y-%m-%d')
+                            
+                            for contract in contracts:
+                                exp_date_str = contract.get('expiration_date')
+                                if exp_date_str:
+                                    try:
+                                        exp_date = datetime.strptime(exp_date_str, '%Y-%m-%d')
+                                        # Contract was active if expiration is after snapshot date
+                                        if exp_date > snapshot_date:
+                                            # Add snapshot date to contract data
+                                            contract_copy = contract.copy()
+                                            contract_copy['snapshot_date'] = date
+                                            filtered_contracts.append(contract_copy)
+                                    except ValueError:
+                                        continue
+                            
+                            logger.debug(f"Successfully fetched chain from {base_url}")
+                            return filtered_contracts
+                        elif data.get('status') == 'ERROR':
+                            logger.debug(f"API error from {base_url}: {data.get('error', 'Unknown')}")
+                            continue
+                    else:
+                        logger.debug(f"HTTP {response.status_code} from {base_url}, trying fallback")
+                        continue
+                        
+                except requests.exceptions.RequestException as e:
+                    logger.debug(f"Request error with {base_url}: {e}, trying fallback")
+                    continue
+            
+            logger.warning(f"Failed to fetch options chain from both Massive and Polygon endpoints")
+            return []
+                
+        except Exception as e:
+            logger.error(f"Error fetching options chain at date from Polygon: {e}")
+            return []
+    
+    def analyze_strike_clustering(
+        self,
+        symbol: str,
+        expiration_date: Optional[str] = None
+    ) -> Dict[str, any]:
+        """
+        Analyze strike clustering from options chain
+        
+        Identifies:
+        - High volume strikes (liquidity clusters)
+        - High OI strikes (interest clusters)
+        - Strike clusters (groupings)
+        - Liquidity zones
+        
+        Args:
+            symbol: Underlying symbol
+            expiration_date: Expiration date filter or None for all
+            
+        Returns:
+            Dictionary with clustering analysis
+        """
+        if not self.is_available():
+            return {
+                'clusters': [],
+                'high_volume_strikes': [],
+                'high_oi_strikes': [],
+                'liquidity_zones': []
+            }
+        
+        try:
+            # Get options chain
+            chain = self.get_options_chain(symbol, expiration_date=expiration_date)
+            
+            if not chain:
+                return {
+                    'clusters': [],
+                    'high_volume_strikes': [],
+                    'high_oi_strikes': [],
+                    'liquidity_zones': []
+                }
+            
+            # Analyze strikes
+            strike_data = {}
+            
+            for contract in chain:
+                strike = contract.get('strike_price', 0)
+                volume = contract.get('volume', 0) or 0
+                oi = contract.get('open_interest', 0) or 0
+                option_type = contract.get('contract_type', 'call')
+                
+                if strike not in strike_data:
+                    strike_data[strike] = {
+                        'call_volume': 0,
+                        'put_volume': 0,
+                        'call_oi': 0,
+                        'put_oi': 0,
+                        'total_volume': 0,
+                        'total_oi': 0
+                    }
+                
+                if option_type.lower() == 'call':
+                    strike_data[strike]['call_volume'] += volume
+                    strike_data[strike]['call_oi'] += oi
+                else:
+                    strike_data[strike]['put_volume'] += volume
+                    strike_data[strike]['put_oi'] += oi
+                
+                strike_data[strike]['total_volume'] += volume
+                strike_data[strike]['total_oi'] += oi
+            
+            # Identify high volume strikes (top 20%)
+            sorted_by_volume = sorted(
+                strike_data.items(),
+                key=lambda x: x[1]['total_volume'],
+                reverse=True
+            )
+            top_20_pct = max(1, len(sorted_by_volume) // 5)
+            high_volume_strikes = [
+                {'strike': strike, 'volume': data['total_volume'], 'oi': data['total_oi']}
+                for strike, data in sorted_by_volume[:top_20_pct]
+            ]
+            
+            # Identify high OI strikes (top 20%)
+            sorted_by_oi = sorted(
+                strike_data.items(),
+                key=lambda x: x[1]['total_oi'],
+                reverse=True
+            )
+            top_20_pct_oi = max(1, len(sorted_by_oi) // 5)
+            high_oi_strikes = [
+                {'strike': strike, 'volume': data['total_volume'], 'oi': data['total_oi']}
+                for strike, data in sorted_by_oi[:top_20_pct_oi]
+            ]
+            
+            # Identify clusters (strikes with similar volume/OI)
+            # Group strikes that are within 5% of each other and have similar liquidity
+            strikes = sorted(strike_data.keys())
+            clusters = []
+            current_cluster = []
+            
+            for i, strike in enumerate(strikes):
+                if not current_cluster:
+                    current_cluster = [strike]
+                else:
+                    # Check if this strike is close to previous and has similar liquidity
+                    prev_strike = current_cluster[-1]
+                    prev_data = strike_data[prev_strike]
+                    curr_data = strike_data[strike]
+                    
+                    # If strikes are within 5% and have similar volume/OI (within 50%)
+                    strike_diff_pct = abs(strike - prev_strike) / prev_strike if prev_strike > 0 else 1.0
+                    volume_ratio = curr_data['total_volume'] / prev_data['total_volume'] if prev_data['total_volume'] > 0 else 0
+                    
+                    if strike_diff_pct < 0.05 and 0.5 < volume_ratio < 2.0:
+                        current_cluster.append(strike)
+                    else:
+                        # Save cluster if it has 3+ strikes
+                        if len(current_cluster) >= 3:
+                            cluster_volume = sum(strike_data[s]['total_volume'] for s in current_cluster)
+                            cluster_oi = sum(strike_data[s]['total_oi'] for s in current_cluster)
+                            clusters.append({
+                                'strikes': current_cluster,
+                                'strike_range': (min(current_cluster), max(current_cluster)),
+                                'total_volume': cluster_volume,
+                                'total_oi': cluster_oi,
+                                'avg_strike': sum(current_cluster) / len(current_cluster)
+                            })
+                        current_cluster = [strike]
+            
+            # Save last cluster
+            if len(current_cluster) >= 3:
+                cluster_volume = sum(strike_data[s]['total_volume'] for s in current_cluster)
+                cluster_oi = sum(strike_data[s]['total_oi'] for s in current_cluster)
+                clusters.append({
+                    'strikes': current_cluster,
+                    'strike_range': (min(current_cluster), max(current_cluster)),
+                    'total_volume': cluster_volume,
+                    'total_oi': cluster_oi,
+                    'avg_strike': sum(current_cluster) / len(current_cluster)
+                })
+            
+            # Identify liquidity zones (strikes with volume > median)
+            median_volume = sorted([d['total_volume'] for d in strike_data.values()])[len(strike_data) // 2] if strike_data else 0
+            liquidity_zones = [
+                {'strike': strike, 'volume': data['total_volume'], 'oi': data['total_oi']}
+                for strike, data in strike_data.items()
+                if data['total_volume'] > median_volume
+            ]
+            liquidity_zones.sort(key=lambda x: x['volume'], reverse=True)
+            
+            return {
+                'clusters': clusters,
+                'high_volume_strikes': high_volume_strikes[:10],  # Top 10
+                'high_oi_strikes': high_oi_strikes[:10],  # Top 10
+                'liquidity_zones': liquidity_zones[:20],  # Top 20
+                'total_strikes_analyzed': len(strike_data),
+                'median_volume': median_volume
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing strike clustering: {e}")
+            return {
+                'clusters': [],
+                'high_volume_strikes': [],
+                'high_oi_strikes': [],
+                'liquidity_zones': []
+            }
+    
+    def get_term_structure(
+        self,
+        symbol: str,
+        current_dte: int
+    ) -> Dict[str, float]:
+        """
+        Get term structure from Polygon
+        
+        Args:
+            symbol: Underlying symbol
+            current_dte: Current days to expiration
+            
+        Returns:
+            Dictionary with term structure features
+        """
+        if not self.is_available():
+            return {
+                'term_structure_slope': 0.0,
+                'is_contango': 0.0,
+                'is_backwardation': 0.0,
+                'front_month_iv': 0.0,
+                'back_month_iv': 0.0
+            }
+        
+        try:
+            # Get all expirations
+            chain = self.get_options_chain(symbol)
+            
+            if not chain:
+                return {
+                    'term_structure_slope': 0.0,
+                    'is_contango': 0.0,
+                    'is_backwardation': 0.0,
+                    'front_month_iv': 0.0,
+                    'back_month_iv': 0.0
+                }
+            
+            # Group by expiration and get ATM IV for each
+            expirations = {}
+            for contract in chain:
+                exp_date = contract.get('expiration_date')
+                strike = contract.get('strike_price', 0)
+                iv = contract.get('implied_volatility', 0) / 100.0  # Convert from percentage
+                
+                if exp_date and iv > 0:
+                    if exp_date not in expirations:
+                        expirations[exp_date] = []
+                    expirations[exp_date].append({
+                        'strike': strike,
+                        'iv': iv
+                    })
+            
+            if len(expirations) < 2:
+                return {
+                    'term_structure_slope': 0.0,
+                    'is_contango': 0.0,
+                    'is_backwardation': 0.0,
+                    'front_month_iv': 0.0,
+                    'back_month_iv': 0.0
+                }
+            
+            # Sort by expiration date
+            sorted_expirations = sorted(expirations.items())
+            front_date, front_contracts = sorted_expirations[0]
+            back_date, back_contracts = sorted_expirations[-1]
+            
+            # Get ATM IV for front and back
+            # Simplified: use average IV for each expiration
+            front_iv = sum(c['iv'] for c in front_contracts) / len(front_contracts) if front_contracts else 0.0
+            back_iv = sum(c['iv'] for c in back_contracts) / len(back_contracts) if back_contracts else 0.0
+            
+            # Calculate slope
+            if front_iv > 0:
+                slope = (back_iv - front_iv) / front_iv
+            else:
+                slope = 0.0
+            
+            return {
+                'term_structure_slope': slope,
+                'is_contango': 1.0 if slope > 0 else 0.0,
+                'is_backwardation': 1.0 if slope < 0 else 0.0,
+                'front_month_iv': front_iv,
+                'back_month_iv': back_iv
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calculating term structure from Polygon: {e}")
+            return {
+                'term_structure_slope': 0.0,
+                'is_contango': 0.0,
+                'is_backwardation': 0.0,
+                'front_month_iv': 0.0,
+                'back_month_iv': 0.0
+            }
+

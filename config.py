@@ -37,18 +37,12 @@ class Config:
     TRAILING_STOP_ACTIVATION_PCT = float(os.getenv('TRAILING_STOP_ACTIVATION_PCT', '1.50'))
     TRAILING_STOP_MIN_PROFIT_PCT = float(os.getenv('TRAILING_STOP_MIN_PROFIT_PCT', '1.00'))
     
-    # Tickers - Active trading universe
-    # Note: AMZN and AMD temporarily disabled due to data access limitations
-    # Re-enable when subscription fully supports these tickers
+    # Tickers
     TICKERS: List[str] = [
         'NVDA', 'AAPL', 'TSLA', 'META', 'GOOG', 
-        'MSFT', 'MSTR', 'AVGO', 'PLTR', 'INTC'
-        # 'AMZN',  # Temporarily disabled - data access limitation
-        # 'AMD',   # Temporarily disabled - data access limitation
+        'MSFT', 'AMZN', 'MSTR', 'AVGO', 'PLTR', 
+        'AMD', 'INTC'
     ]
-    
-    # Disabled tickers (for reference and future re-enablement)
-    DISABLED_TICKERS: List[str] = ['AMZN', 'AMD']
     
     # Logging
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')

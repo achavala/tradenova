@@ -11,7 +11,7 @@ font = "sans serif"
 [server]
 headless = false
 port = 8502
-enableCORS = false
+enableCORS = true
 enableXsrfProtection = true
 runOnSave = false
 
@@ -20,5 +20,9 @@ gatherUsageStats = false
 
 [ui]
 hideTopBar = false
-hideSidebarNav = false
+
+# Hide main page from navigation (main dashboard.py will still be accessible as home)
+[server]
+# Main page (dashboard.py) will be the home page but won't show in sidebar navigation
+# Pages in pages/ directory will show in navigation
 

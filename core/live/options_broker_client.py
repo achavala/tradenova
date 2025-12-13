@@ -47,13 +47,13 @@ class OptionsBrokerClient:
         try:
             qty = int(qty)  # Options must be whole contracts
             
-            # Alpaca options orders use the same submit_order but options symbols are recognized automatically
             order_params = {
                 'symbol': option_symbol,
                 'qty': qty,
                 'side': side,
                 'type': order_type,
-                'time_in_force': time_in_force
+                'time_in_force': time_in_force,
+                'asset_class': 'option'  # Specify options
             }
             
             if limit_price:
