@@ -35,6 +35,9 @@ logs/git_auto_commit*.log
 daily_balance.json
 *.csv
 *.json
+data/
+options_history.db
+options_cache/
 
 # IDE
 .vscode/
