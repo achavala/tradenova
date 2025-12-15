@@ -13,7 +13,9 @@ class Config:
     # Alpaca API
     ALPACA_API_KEY = os.getenv('ALPACA_API_KEY', '')
     ALPACA_SECRET_KEY = os.getenv('ALPACA_SECRET_KEY', '')
-    ALPACA_BASE_URL = os.getenv('ALPACA_BASE_URL', 'https://paper-api.alpaca.markets')
+    # Remove /v2 from base URL if present (alpaca-trade-api adds it automatically)
+    _base_url = os.getenv('ALPACA_BASE_URL', 'https://paper-api.alpaca.markets')
+    ALPACA_BASE_URL = _base_url.rstrip('/').rstrip('/v2')
     
     # Trading Parameters
     INITIAL_BALANCE = float(os.getenv('INITIAL_BALANCE', '10000'))

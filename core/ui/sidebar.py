@@ -23,20 +23,16 @@ def render_sidebar():
     # System Status - Check actual status
     try:
         from config import Config
-        from alpaca_client import AlpacaClient
-        client = AlpacaClient(
-            Config.ALPACA_API_KEY,
-            Config.ALPACA_SECRET_KEY,
-            Config.ALPACA_BASE_URL
-        )
-        account = client.get_account()
-        is_market_open = client.is_market_open()
-        status_color = "🟢"
-        status_text = "Operational"
+        # Only check if API keys are set (don't make actual API calls in sidebar)
+        if Config.ALPACA_API_KEY and Config.ALPACA_SECRET_KEY:
+            status_color = "🟢"
+            status_text = "Operational"
+        else:
+            status_color = "🟡"
+            status_text = "Config Missing"
     except Exception:
         status_color = "🟡"
         status_text = "Initializing"
-        is_market_open = False
     
     st.sidebar.markdown(f"**Status:** {status_color} {status_text}")
     st.sidebar.markdown(f"**Mode:** Paper Trading")

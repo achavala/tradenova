@@ -9,16 +9,18 @@ textColor = "#262730"
 font = "sans serif"
 
 [server]
-headless = false
+headless = true
 port = 8502
-enableCORS = false
+enableCORS = true
 enableXsrfProtection = true
 runOnSave = false
+# Allow access from any IP (needed for Railway/mobile)
+address = "0.0.0.0"
 
 [browser]
 gatherUsageStats = false
 
 [ui]
 hideTopBar = false
-hideSidebarNav = false
+# Note: hideSidebarNav is deprecated and removed
 

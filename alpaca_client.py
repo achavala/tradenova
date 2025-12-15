@@ -21,8 +21,11 @@ class AlpacaClient:
         Args:
             api_key: Alpaca API key
             secret_key: Alpaca secret key
-            base_url: Alpaca API base URL
+            base_url: Alpaca API base URL (should NOT include /v2)
         """
+        # Ensure base_url doesn't have trailing /v2 (alpaca-trade-api adds it)
+        base_url = base_url.rstrip('/').rstrip('/v2')
+        
         self.api = tradeapi.REST(
             api_key,
             secret_key,
@@ -30,7 +33,7 @@ class AlpacaClient:
             api_version='v2'
         )
         self.ALPACA_BASE_URL = base_url
-        logger.info("Alpaca client initialized")
+        logger.info(f"Alpaca client initialized with base URL: {base_url}")
     
     def get_account(self) -> Dict:
         """Get account information"""
