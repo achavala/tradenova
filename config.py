@@ -15,10 +15,6 @@ class Config:
     ALPACA_SECRET_KEY = os.getenv('ALPACA_SECRET_KEY', '')
     ALPACA_BASE_URL = os.getenv('ALPACA_BASE_URL', 'https://paper-api.alpaca.markets')
     
-    # Massive API (Options Data)
-    MASSIVE_API_KEY = os.getenv('MASSIVE_API_KEY', '')
-    MASSIVE_BASE_URL = os.getenv('MASSIVE_BASE_URL', 'https://api.massive.com')
-    
     # Trading Parameters
     INITIAL_BALANCE = float(os.getenv('INITIAL_BALANCE', '10000'))
     MAX_ACTIVE_TRADES = int(os.getenv('MAX_ACTIVE_TRADES', '10'))

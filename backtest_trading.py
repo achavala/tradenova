@@ -225,11 +225,12 @@ class BacktestEngine:
         # Check if we can open new position
         max_positions = 10
         if len(self.positions) >= max_positions:
+            logger.debug(f"{symbol}: Cannot open position - max positions ({max_positions}) reached")
             return False
         
-        # Check if already have position
-        if symbol in self.positions:
-            return False
+        # Allow multiple positions per ticker to reach 2-5 trades/day target
+        # Only check if we have too many total positions (already checked above)
+        # Removed: if symbol in self.positions: return False
         
         # Calculate position size (10% of balance per position)
         position_value = self.current_balance * 0.10
@@ -290,17 +291,41 @@ class BacktestEngine:
         else:
             check_interval = timedelta(days=1)
         
+        # Track warmup mode
+        warmup_count = 0
+        trading_count = 0
+        
         for i, current_time in enumerate(all_times):
             # Update existing positions
             self.update_positions(current_time)
+            
+            # Determine if we're in warmup mode or trading mode
+            # Warmup: Need 50+ bars for feature calculation, but don't trade yet
+            # Trading: Have enough data AND we're in the trading window
+            is_warmup = False
+            can_trade = False
+            
+            # Check if we have enough data for analysis
+            sample_ticker = self.tickers[0] if self.tickers else None
+            if sample_ticker and sample_ticker in self.historical_data:
+                df_sample = self.historical_data[sample_ticker]
+                bars_up_to_now_sample = df_sample[df_sample.index <= current_time]
+                if len(bars_up_to_now_sample) < 50:
+                    is_warmup = True
+                else:
+                    # We have enough data - check if we're in trading window
+                    # If start_date is set for warmup, only trade after warmup period
+                    # For now, trade once we have enough data
+                    can_trade = True
             
             # Check for new trade opportunities (every 5 minutes)
             for ticker in self.tickers:
                 if ticker not in self.historical_data:
                     continue
                 
-                # Skip if we already have a position
-                if ticker in self.positions:
+                # Allow multiple positions per ticker to reach 2-5 trades/day target
+                # Skip only if we have too many total positions
+                if len(self.positions) >= 10:  # Max 10 total positions
                     continue
                 
                 # Check if it's time to evaluate
@@ -314,8 +339,22 @@ class BacktestEngine:
                 df = self.historical_data[ticker]
                 bars_up_to_now = df[df.index <= current_time]
                 
-                if len(bars_up_to_now) < 50:  # Need minimum bars
+                # Warmup mode: Not enough data yet
+                if len(bars_up_to_now) < 50:
+                    if i == 0 or (i % 10 == 0):  # Log occasionally
+                        warmup_count += 1
+                        logger.info(f"WARMUP MODE: {ticker} - {len(bars_up_to_now)} / 50 bars available — trading disabled")
                     continue
+                
+                # Log transition to trading mode (first time we have enough data)
+                if warmup_count > 0 and trading_count == 0:
+                    logger.info(f"✅ WARMUP COMPLETE: {ticker} - {len(bars_up_to_now)} bars available — trading enabled")
+                
+                # Trading mode: Have enough data
+                if not can_trade:
+                    continue  # Skip if warmup mode
+                
+                trading_count += 1
                 
                 # Get current price
                 current_price = self.get_current_price(ticker, current_time)
@@ -326,17 +365,30 @@ class BacktestEngine:
                 try:
                     trade_intent = self.orchestrator.analyze_symbol(ticker, bars_up_to_now)
                     
-                    if trade_intent and trade_intent.confidence >= 0.30:
-                        # Create signal dict
-                        signal = {
-                            'direction': trade_intent.direction.value,
-                            'confidence': trade_intent.confidence,
-                            'agent': trade_intent.agent_name,
-                            'reasoning': trade_intent.reasoning
-                        }
+                    if trade_intent:
+                        logger.debug(f"{ticker} at {current_time.date()}: Signal from {trade_intent.agent_name} "
+                                   f"with confidence {trade_intent.confidence:.2f}")
                         
-                        # Execute trade
-                        self.execute_trade(ticker, signal, current_time, current_price)
+                        if trade_intent.confidence >= 0.20:  # Lowered from 0.30 to get 2-5 trades/day
+                            # Log warmup transition if this is first trade
+                            if trading_count == 1:
+                                logger.info(f"✅ WARMUP COMPLETE: {len(bars_up_to_now)} bars available — trading enabled")
+                            # Create signal dict
+                            signal = {
+                                'direction': trade_intent.direction.value,
+                                'confidence': trade_intent.confidence,
+                                'agent': trade_intent.agent_name,
+                                'reasoning': trade_intent.reasoning
+                            }
+                            
+                            # Execute trade
+                            executed = self.execute_trade(ticker, signal, current_time, current_price)
+                            if not executed:
+                                logger.debug(f"{ticker}: Trade not executed (check execute_trade logic)")
+                        else:
+                            logger.debug(f"{ticker}: Signal confidence {trade_intent.confidence:.2f} < 0.20 threshold")
+                    else:
+                        logger.debug(f"{ticker} at {current_time.date()}: No signal generated")
                         
                 except Exception as e:
                     logger.debug(f"Error analyzing {ticker} at {current_time}: {e}")

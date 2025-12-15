@@ -82,7 +82,7 @@ class MultiAgentOrchestrator:
             # Classify regime
             regime_signal = self.regime_classifier.classify(features)
             
-            if regime_signal.confidence < 0.4:
+            if regime_signal.confidence < 0.30:  # Lowered from 0.4 to allow more trades (target: 2-5/day)
                 logger.debug(f"{symbol}: Low regime confidence ({regime_signal.confidence:.2f})")
                 return None
             

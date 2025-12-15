@@ -29,15 +29,11 @@ wheels/
 # Logs
 *.log
 tradenova.log
-logs/git_auto_commit*.log
 
 # Data files
 daily_balance.json
 *.csv
 *.json
-data/
-options_history.db
-options_cache/
 
 # IDE
 .vscode/
