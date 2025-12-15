@@ -35,6 +35,10 @@ daily_balance.json
 *.csv
 *.json
 
+# Database backups (too large for GitHub)
+*.db.backup
+data/options_history.db.backup
+
 # IDE
 .vscode/
 .idea/
