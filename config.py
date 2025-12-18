@@ -17,6 +17,11 @@ class Config:
     _base_url = os.getenv('ALPACA_BASE_URL', 'https://paper-api.alpaca.markets')
     ALPACA_BASE_URL = _base_url.rstrip('/').rstrip('/v2')
     
+    # Massive API (formerly Polygon.io) for options data
+    # Supports both MASSIVE_API_KEY and POLYGON_API_KEY for backwards compatibility
+    MASSIVE_API_KEY = os.getenv('MASSIVE_API_KEY') or os.getenv('POLYGON_API_KEY', '')
+    POLYGON_API_KEY = MASSIVE_API_KEY  # Backwards compatibility alias
+    
     # Trading Parameters
     INITIAL_BALANCE = float(os.getenv('INITIAL_BALANCE', '10000'))
     MAX_ACTIVE_TRADES = int(os.getenv('MAX_ACTIVE_TRADES', '10'))
@@ -39,12 +44,17 @@ class Config:
     TRAILING_STOP_ACTIVATION_PCT = float(os.getenv('TRAILING_STOP_ACTIVATION_PCT', '1.50'))
     TRAILING_STOP_MIN_PROFIT_PCT = float(os.getenv('TRAILING_STOP_MIN_PROFIT_PCT', '1.00'))
     
-    # Tickers
+    # Tickers (SPY excluded - user requirement)
     TICKERS: List[str] = [
         'NVDA', 'AAPL', 'TSLA', 'META', 'GOOG', 
         'MSFT', 'AMZN', 'MSTR', 'AVGO', 'PLTR', 
         'AMD', 'INTC'
     ]
+    
+    # Options Trading Parameters
+    MIN_DTE = int(os.getenv('MIN_DTE', '0'))  # Minimum days to expiration
+    MAX_DTE = int(os.getenv('MAX_DTE', '30'))  # Maximum days to expiration (user requirement: 0-30 DTE)
+    TARGET_DTE = int(os.getenv('TARGET_DTE', '15'))  # Target DTE for option selection
     
     # Logging
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')

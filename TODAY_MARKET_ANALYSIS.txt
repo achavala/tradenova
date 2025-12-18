@@ -1,0 +1,202 @@
+
+==========================================================================================
+                    COMPREHENSIVE MARKET ANALYSIS - December 15, 2025                     
+==========================================================================================
+
+📊 MARKET STATUS
+------------------------------------------------------------------------------------------
+Market: ❌ CLOSED
+Account Equity: $99,756.43
+Buying Power: $199,512.86
+
+📈 TICKER-BY-TICKER ANALYSIS
+------------------------------------------------------------------------------------------
+
+🔍 NVDA
+------------------------------------------------------------------------------------------
+   Current Price: $177.17
+   Today's Change: +0.81%
+   Volume vs Avg: -9.8%
+   RSI(14): 49.8
+   Price vs SMA20: -2.01%
+   Price vs SMA50: -4.98%
+   ❌ Error analyzing NVDA: 'RegimeSignal' object has no attribute 'regime'
+
+🔍 AAPL
+------------------------------------------------------------------------------------------
+   Current Price: $273.20
+   Today's Change: +0.18%
+   Volume vs Avg: -25.3%
+   RSI(14): 45.4
+   Price vs SMA20: -1.28%
+   Price vs SMA50: +1.74%
+   ❌ Error analyzing AAPL: 'RegimeSignal' object has no attribute 'regime'
+
+🔍 TSLA
+------------------------------------------------------------------------------------------
+   Current Price: $490.57
+   Today's Change: +3.07%
+   Volume vs Avg: -6.0%
+   RSI(14): 81.4
+   Price vs SMA20: +12.67%
+   Price vs SMA50: +12.20%
+   ❌ Error analyzing TSLA: 'RegimeSignal' object has no attribute 'regime'
+
+🔍 META
+------------------------------------------------------------------------------------------
+   Current Price: $656.34
+   Today's Change: +1.49%
+   Volume vs Avg: -7.2%
+   RSI(14): 58.8
+   Price vs SMA20: +3.03%
+   Price vs SMA50: -1.31%
+   ❌ Error analyzing META: 'RegimeSignal' object has no attribute 'regime'
+
+🔍 GOOG
+------------------------------------------------------------------------------------------
+   Current Price: $306.80
+   Today's Change: -0.51%
+   Volume vs Avg: -2.6%
+   RSI(14): 33.2
+   Price vs SMA20: -1.62%
+   Price vs SMA50: +7.78%
+   ❌ Error analyzing GOOG: 'RegimeSignal' object has no attribute 'regime'
+
+🔍 MSFT
+------------------------------------------------------------------------------------------
+   Current Price: $474.54
+   Today's Change: +0.33%
+   Volume vs Avg: -12.7%
+   RSI(14): 49.6
+   Price vs SMA20: -1.68%
+   Price vs SMA50: -5.62%
+   ❌ Error analyzing MSFT: 'RegimeSignal' object has no attribute 'regime'
+
+🔍 AMZN
+------------------------------------------------------------------------------------------
+   Current Price: $222.13
+   Today's Change: +0.01%
+   Volume vs Avg: -16.9%
+   RSI(14): 37.4
+   Price vs SMA20: -2.33%
+   Price vs SMA50: -3.11%
+   ❌ Error analyzing AMZN: 'RegimeSignal' object has no attribute 'regime'
+
+🔍 MSTR
+------------------------------------------------------------------------------------------
+   Current Price: $166.78
+   Today's Change: +3.34%
+   Volume vs Avg: -16.5%
+   RSI(14): 47.0
+   Price vs SMA20: -7.29%
+   Price vs SMA50: -29.01%
+   ❌ Error analyzing MSTR: 'RegimeSignal' object has no attribute 'regime'
+
+🔍 AVGO
+------------------------------------------------------------------------------------------
+   Current Price: $340.20
+   Today's Change: +0.44%
+   Volume vs Avg: -11.9%
+   RSI(14): 35.2
+   Price vs SMA20: -9.67%
+   Price vs SMA50: -6.06%
+   ❌ Error analyzing AVGO: 'RegimeSignal' object has no attribute 'regime'
+
+🔍 PLTR
+------------------------------------------------------------------------------------------
+   Current Price: $187.14
+   Today's Change: +2.46%
+   Volume vs Avg: +28.3%
+   RSI(14): 83.6
+   Price vs SMA20: +7.84%
+   Price vs SMA50: +4.07%
+   ❌ Error analyzing PLTR: 'RegimeSignal' object has no attribute 'regime'
+
+🔍 AMD
+------------------------------------------------------------------------------------------
+   Current Price: $208.42
+   Today's Change: +0.77%
+   Volume vs Avg: -13.8%
+   RSI(14): 53.5
+   Price vs SMA20: -3.42%
+   Price vs SMA50: -9.81%
+   ❌ Error analyzing AMD: 'RegimeSignal' object has no attribute 'regime'
+
+🔍 INTC
+------------------------------------------------------------------------------------------
+   Current Price: $37.31
+   Today's Change: -0.53%
+   Volume vs Avg: -17.1%
+   RSI(14): 54.1
+   Price vs SMA20: -3.02%
+   Price vs SMA50: -2.06%
+   ❌ Error analyzing INTC: 'RegimeSignal' object has no attribute 'regime'
+
+==========================================================================================
+                                     SUMMARY ANALYSIS                                     
+==========================================================================================
+
+📊 SIGNALS GENERATED: 0
+
+❌ REJECTIONS: 12
+
+   Rejections by Category:
+      error: 12
+
+==========================================================================================
+                                   ROOT CAUSE ANALYSIS                                    
+==========================================================================================
+
+🔴 PRIMARY ISSUES:
+
+==========================================================================================
+               RECOMMENDATIONS TO ACHIEVE ORIGINAL VISION (2-5 trades/day)                
+==========================================================================================
+
+🎯 IMMEDIATE ACTIONS (Today):
+   1. Fix Authentication:
+      → Run: ./scripts/fix_trading_auth.sh
+      → This will restart trading system with proper credentials
+      → Expected: 0 trades should execute immediately
+
+   2. Verify Signal Generation:
+      → Current: 0 signals generated
+      → Target: 2-5 signals per day
+      → Status: ⚠️  NEEDS ADJUSTMENT
+
+🔧 SYSTEM IMPROVEMENTS (This Week):
+   1. Lower Confidence Thresholds (if needed):
+      → Current: 0.20 minimum
+      → If < 2 signals/day: Lower to 0.15
+      → File: core/multi_agent_orchestrator.py
+
+   2. Adjust Regime Filters:
+      → Current: 0.30 minimum regime confidence
+      → If too restrictive: Lower to 0.25
+      → File: backtest_trading.py
+
+   3. Expand Ticker Universe:
+      → Current: 12 tickers
+      → Add more liquid options tickers if needed
+      → File: config.py
+
+   4. Agent Sensitivity Tuning:
+      → Review agent-specific thresholds
+      → Ensure agents are not too conservative
+      → Files: core/agents/*.py
+
+📈 MARKET CONDITIONS ANALYSIS:
+   ⚠️  Market conditions not generating signals
+   → May be low volatility day
+   → Consider: Lower thresholds or expand universe
+
+==========================================================================================
+                                        NEXT STEPS                                        
+==========================================================================================
+
+1. Run fix script: ./scripts/fix_trading_auth.sh
+2. Monitor next trading cycle
+3. If still < 2 trades/day, adjust thresholds
+4. Review this analysis daily to tune system
+
+==========================================================================================

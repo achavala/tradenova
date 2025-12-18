@@ -26,3 +26,4 @@ else
     echo "⚠️  No automatic trading job found"
 fi
 
+

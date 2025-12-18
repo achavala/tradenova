@@ -1,36 +1,43 @@
 """
 EMA Agent
-Simple EMA momentum trading (especially for SPY)
+Simple EMA momentum trading for all configured tickers
 """
 import logging
 from typing import Dict, Optional
 
 from core.agents.base_agent import BaseAgent, TradeIntent, TradeDirection
 from core.regime.classifier import RegimeSignal
+from config import Config
 
 logger = logging.getLogger(__name__)
 
 class EMAAgent(BaseAgent):
     """Agent for simple EMA momentum trading"""
     
-    def __init__(self, symbol_filter: str = "SPY"):
+    def __init__(self, symbol_filter: Optional[str] = None):
         """
         Initialize EMA Agent
         
         Args:
-            symbol_filter: Only trade this symbol (default: SPY)
+            symbol_filter: If provided, only trade this symbol. Otherwise trades all Config.TICKERS
         """
         super().__init__("EMAAgent", min_confidence=0.6)
         self.symbol_filter = symbol_filter
+        # If no filter, use all configured tickers
+        if symbol_filter is None:
+            from config import Config
+            self.allowed_symbols = set(Config.TICKERS)
+        else:
+            self.allowed_symbols = {symbol_filter}
     
     def should_activate(self, regime_signal: RegimeSignal, features: Dict) -> bool:
         """Check if EMA Agent should activate"""
-        return True  # Always available, but only for specific symbols
+        return True  # Always available for configured symbols
     
     def evaluate(self, symbol: str, regime_signal: RegimeSignal, features: Dict) -> Optional[TradeIntent]:
         """Evaluate EMA momentum opportunity"""
-        # Only trade specified symbol
-        if symbol != self.symbol_filter:
+        # Only trade allowed symbols (exclude SPY)
+        if symbol not in self.allowed_symbols or symbol == "SPY":
             return None
         
         ema_9 = features.get('ema_9', 0)

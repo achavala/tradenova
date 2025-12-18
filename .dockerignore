@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.py[cod]
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Virtualenv
+venv/
+env/
+ENV/
+.venv
+.env/
+
+# Data & models (CRITICAL - MUST EXCLUDE)
+data/
+**/data/**
+models/
+**/models/**
+*.db
+*.sqlite
+*.db.backup
+*.pkl
+*.parquet
+*.csv
+*.zip
+*.h5
+*.ckpt
+*.pt
+*.pth
+
+# Backtests / artifacts
+backtest_results/
+backtests/
+logs/
+local-data/
+*.log
+*.pid
+
+# Not needed in container
+tests/
+docs/
+*.md
+!README.md
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+.eggs/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Platform files
+platform.db

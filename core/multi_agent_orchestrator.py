@@ -47,7 +47,7 @@ class MultiAgentOrchestrator:
             MeanReversionAgent(),
             FVGAgent(),
             VolatilityAgent(),
-            EMAAgent(symbol_filter="SPY"),  # Only for SPY
+            EMAAgent(),  # Works for all tickers in Config.TICKERS
             OptionsAgent(self.options_feed, self.iv_calculator),
             ThetaHarvesterAgent(self.options_feed, self.iv_calculator, self.gex_calculator),
             GammaScalperAgent(self.options_feed, self.iv_calculator, self.gex_calculator)
@@ -66,6 +66,17 @@ class MultiAgentOrchestrator:
         Returns:
             TradeIntent or None
         """
+        # Explicitly exclude SPY (user requirement)
+        if symbol == "SPY":
+            logger.debug(f"{symbol}: SPY excluded from trading")
+            return None
+        
+        # Only analyze symbols in configured ticker list
+        from config import Config
+        if symbol not in Config.TICKERS:
+            logger.debug(f"{symbol}: Not in configured ticker list")
+            return None
+        
         if bars.empty or len(bars) < 50:
             logger.warning(f"Insufficient data for {symbol}")
             return None

@@ -151,3 +151,4 @@ tail -f logs/tradenova_daily.log | grep -E "signal|confidence|agent|ensemble|blo
 
 
 
+

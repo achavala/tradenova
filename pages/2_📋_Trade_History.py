@@ -23,44 +23,25 @@ render_sidebar()
 
 st.title("📋 Trade History")
 
-# Load backtest results
+# Load trades from both backtest and live trading
 @st.cache_data(ttl=60)
-def load_backtest_trades():
-    """Load trades from backtest results"""
-    trades = []
-    logs_dir = Path('logs')
+def load_all_trades():
+    """Load trades from both backtest results and live Alpaca orders"""
+    from core.ui.trade_loader import load_all_trades as loader
     
-    # Find all backtest result files
-    backtest_files = list(logs_dir.glob('backtest_results_*.json'))
-    
-    # Sort by modification time (newest first)
-    backtest_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
-    
-    for file_path in backtest_files:
-        try:
-            with open(file_path, 'r') as f:
-                data = json.load(f)
-                if 'trades' in data:
-                    for trade in data['trades']:
-                        # Add source info
-                        trade['source'] = 'Backtest'
-                        trade['backtest_file'] = file_path.name
-                        trades.append(trade)
-        except Exception as e:
-            st.warning(f"Error loading {file_path.name}: {e}")
-            continue
-    
-    return trades
+    return loader()
 
 # Load trades
-trades = load_backtest_trades()
+trades = load_all_trades()
 
 if not trades:
-    st.info("No trades found. Run a backtest to see trade history.")
+    st.info("No trades found.")
     st.markdown("""
-    ### How to generate trades:
-    1. Run a backtest: `python scripts/backtest_last_week.py`
-    2. Trades will be saved to `logs/backtest_results_*.json`
+    ### How to see trades:
+    1. **Backtest trades**: Run a backtest: `python scripts/backtest_last_week.py`
+       - Trades will be saved to `logs/backtest_results_*.json`
+    2. **Live trades**: The system will automatically load trades from your Alpaca account
+       - Make sure your Alpaca API credentials are configured in `.env`
     3. Refresh this page to see the results
     """)
 else:

@@ -55,12 +55,12 @@ class OptionsAgent(BaseAgent):
                 logger.debug(f"No options chain available for {symbol}")
                 return None
             
-            # Get expiration dates (prefer 30-45 DTE)
+            # Get expiration dates (prefer 0-30 DTE)
             expirations = self.options_feed.get_expiration_dates(symbol)
             if not expirations:
                 return None
             
-            # Select expiration (30-45 days out)
+            # Select expiration (0-30 days out)
             target_expiration = self._select_expiration(expirations)
             if not target_expiration:
                 return None
@@ -172,13 +172,13 @@ class OptionsAgent(BaseAgent):
             logger.error(f"Error in OptionsAgent for {symbol}: {e}")
             return None
     
-    def _select_expiration(self, expirations: list, target_dte: int = 35) -> Optional[str]:
+    def _select_expiration(self, expirations: list, target_dte: int = 15) -> Optional[str]:
         """
-        Select expiration date closest to target DTE
+        Select expiration date closest to target DTE (0-30 days)
         
         Args:
             expirations: List of expiration dates (YYYY-MM-DD)
-            target_dte: Target days to expiration
+            target_dte: Target days to expiration (default: 15)
             
         Returns:
             Selected expiration date or None
@@ -195,8 +195,8 @@ class OptionsAgent(BaseAgent):
                 exp_date = datetime.strptime(exp_date_str, '%Y-%m-%d').date()
                 dte = (exp_date - today).days
                 
-                # Prefer 30-45 DTE
-                if 30 <= dte <= 45:
+                # Prefer 0-30 DTE (user requirement)
+                if 0 <= dte <= 30:
                     diff = abs(dte - target_dte)
                     if diff < best_diff:
                         best_diff = diff
@@ -204,14 +204,14 @@ class OptionsAgent(BaseAgent):
             except:
                 continue
         
-        # If no 30-45 DTE found, use closest
+        # If no 0-30 DTE found, use closest within range
         if not best_expiration:
             today = datetime.now().date()
             for exp_date_str in expirations:
                 try:
                     exp_date = datetime.strptime(exp_date_str, '%Y-%m-%d').date()
                     dte = (exp_date - today).days
-                    if dte >= 7:  # At least 7 days
+                    if 0 <= dte <= 30:  # Must be 0-30 DTE
                         diff = abs(dte - target_dte)
                         if diff < best_diff:
                             best_diff = diff

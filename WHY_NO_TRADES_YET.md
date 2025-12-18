@@ -297,3 +297,4 @@ tail -f logs/tradenova_daily.log | grep -i confidence
 
 
 
+

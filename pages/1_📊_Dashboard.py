@@ -12,6 +12,9 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Import pandas for datetime conversion
+import pandas as pd
+
 st.set_page_config(
     page_title="Dashboard - TradeNova",
     page_icon="📊",
@@ -27,23 +30,26 @@ st.title("📊 Dashboard Overview")
 # Load recent trades for summary
 @st.cache_data(ttl=30)
 def load_recent_trades():
-    """Load recent trades from backtest results"""
-    trades = []
-    logs_dir = Path('logs')
-    backtest_files = list(logs_dir.glob('backtest_results_*.json'))
-    backtest_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+    """Load recent trades from both backtest results and live Alpaca orders"""
+    from core.ui.trade_loader import load_all_trades
     
-    for file_path in backtest_files[:1]:  # Just latest
-        try:
-            import json
-            with open(file_path, 'r') as f:
-                data = json.load(f)
-                if 'trades' in data:
-                    trades.extend(data['trades'])
-        except:
-            pass
+    all_trades = load_all_trades()
     
-    return trades
+    # Sort by entry time (newest first) and take most recent
+    if all_trades:
+        # Convert entry_time to datetime for sorting
+        for trade in all_trades:
+            if 'entry_time' in trade and isinstance(trade['entry_time'], str):
+                try:
+                    trade['_sort_time'] = pd.to_datetime(trade['entry_time'])
+                except:
+                    trade['_sort_time'] = datetime.now()
+            else:
+                trade['_sort_time'] = datetime.now()
+        
+        all_trades.sort(key=lambda x: x.get('_sort_time', datetime.now()), reverse=True)
+    
+    return all_trades
 
 trades = load_recent_trades()
 
@@ -56,7 +62,8 @@ with col1:
 
 with col2:
     if trades:
-        winning = len([t for t in trades if t.get('pnl', 0) > 0])
+        # Handle None values properly - convert to 0 for comparison
+        winning = len([t for t in trades if (t.get('pnl') or 0) > 0])
         win_rate = (winning / total_trades * 100) if total_trades > 0 else 0
         st.metric("Win Rate", f"{win_rate:.1f}%")
     else:
@@ -64,7 +71,8 @@ with col2:
 
 with col3:
     if trades:
-        total_pnl = sum(t.get('pnl', 0) for t in trades)
+        # Handle None values properly - convert to 0 for sum
+        total_pnl = sum((t.get('pnl') or 0) for t in trades)
         st.metric("Total P&L", f"${total_pnl:,.2f}")
     else:
         st.metric("Total P&L", "$0.00")

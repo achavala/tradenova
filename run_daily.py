@@ -9,6 +9,10 @@ import os
 from pathlib import Path
 from datetime import datetime
 import time
+from dotenv import load_dotenv
+
+# Load environment variables (critical for Fly.io deployment)
+load_dotenv()
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent))

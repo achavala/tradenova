@@ -63,8 +63,18 @@ class IntegratedTrader:
         # Initialize components
         self.orchestrator = MultiAgentOrchestrator(self.client)
         self.executor = BrokerExecutor(self.client)
+        
+        # Initialize risk manager with ACTUAL account balance (not config default)
+        try:
+            account = self.client.get_account()
+            actual_balance = float(account['equity'])
+            logger.info(f"Initializing risk manager with actual balance: ${actual_balance:,.2f}")
+        except Exception as e:
+            logger.warning(f"Could not get account balance, using config default: {e}")
+            actual_balance = Config.INITIAL_BALANCE
+        
         self.risk_manager = AdvancedRiskManager(
-            initial_balance=Config.INITIAL_BALANCE,
+            initial_balance=actual_balance,  # ✅ Use actual balance
             daily_loss_limit_pct=0.02,
             max_drawdown_pct=0.10,
             max_loss_streak=3
@@ -177,6 +187,31 @@ class IntegratedTrader:
         
         # Get risk status
         risk_status = self.risk_manager.get_risk_status()
+        
+        # Verify risk status against actual account state (safety check)
+        if risk_status['risk_level'] in ['danger', 'blocked']:
+            # Double-check with actual account balance
+            try:
+                account = self.client.get_account()
+                actual_balance = float(account['equity'])
+                actual_equity_pct = (actual_balance / self.risk_manager.initial_balance) if self.risk_manager.initial_balance > 0 else 1.0
+                
+                # If account is actually healthy (within 5% of initial), reset risk manager
+                if actual_equity_pct >= 0.95:
+                    logger.info(f"Risk status shows {risk_status['risk_level']} but account is healthy (${actual_balance:,.2f}). Resetting risk manager.")
+                    self.risk_manager.peak_balance = max(self.risk_manager.peak_balance, actual_balance)
+                    self.risk_manager.current_balance = actual_balance
+                    # Re-check risk status
+                    risk_status = self.risk_manager.get_risk_status()
+                    logger.info(f"Risk status after reset: {risk_status['risk_level']}")
+                else:
+                    logger.warning(f"Trading blocked: {risk_status['risk_level']} (actual balance: ${actual_balance:,.2f})")
+                    return
+            except Exception as e:
+                logger.warning(f"Trading blocked: {risk_status['risk_level']} (could not verify: {e})")
+                return
+        
+        # Final check after potential reset
         if risk_status['risk_level'] in ['danger', 'blocked']:
             logger.warning(f"Trading blocked: {risk_status['risk_level']}")
             return

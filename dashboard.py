@@ -21,15 +21,32 @@ st.set_page_config(
     }
 )
 
-# Import and render persistent sidebar FIRST (before redirect)
+# Import and render persistent sidebar FIRST
 from core.ui.sidebar import render_sidebar
 render_sidebar()
 
-# Redirect to Dashboard page
+# Show dashboard content directly (Streamlit will handle page routing automatically)
+# Users can navigate via sidebar
+st.title("📊 TradeNova Dashboard")
+st.markdown("Welcome to TradeNova - Institutional-Grade Multi-Agent RL Trading System")
+
+st.info("💡 **Navigation**: Use the sidebar to navigate to different pages:")
+st.markdown("""
+- **📊 Dashboard**: Overview of trades and system status
+- **📋 Trade History**: Detailed trade history with filters
+- **📝 System Logs**: Real-time system activity and logs
+""")
+
+# Try to load and show recent trades summary
 try:
-    st.switch_page("pages/1_📊_Dashboard.py")
-except Exception:
-    # Fallback if pages don't exist yet
-    st.title("📊 TradeNova Dashboard")
-    st.info("Dashboard pages are being set up. Please check back in a moment.")
+    from core.ui.trade_loader import load_all_trades
+    trades = load_all_trades()
+    
+    if trades:
+        st.success(f"✅ Found {len(trades)} total trades")
+        st.markdown("Visit the **Trade History** page to see detailed trade information.")
+    else:
+        st.info("No trades found yet. Run a backtest or wait for live trades to appear.")
+except Exception as e:
+    st.debug(f"Could not load trades: {e}")
 

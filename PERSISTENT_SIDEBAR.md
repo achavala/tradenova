@@ -54,3 +54,4 @@ render_sidebar()
 ✅ **Easy Navigation**: Quick access to system status and controls  
 ✅ **Future-Proof**: Add new pages and the sidebar automatically appears  
 
+
