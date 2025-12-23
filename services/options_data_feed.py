@@ -62,10 +62,34 @@ class OptionsDataFeed:
             response = requests.get(url, headers=headers, params=params)
             response.raise_for_status()
             
-            contracts = response.json()
+            data = response.json()
             
-            logger.info(f"Retrieved {len(contracts)} option contracts for {symbol}")
-            return contracts
+            # Handle different response formats
+            if isinstance(data, dict):
+                # If response is a dict, check for common keys
+                if 'contracts' in data:
+                    contracts = data['contracts']
+                elif 'results' in data:
+                    contracts = data['results']
+                else:
+                    # If it's a dict but no expected keys, try to extract values
+                    contracts = list(data.values()) if data else []
+            elif isinstance(data, list):
+                contracts = data
+            else:
+                logger.warning(f"Unexpected response format for {symbol}: {type(data)}")
+                return []
+            
+            # Flatten nested lists (Alpaca sometimes returns list of lists)
+            flattened = []
+            for item in contracts:
+                if isinstance(item, list):
+                    flattened.extend(item)
+                elif isinstance(item, dict):
+                    flattened.append(item)
+            
+            logger.info(f"Retrieved {len(flattened)} option contracts for {symbol}")
+            return flattened
             
         except Exception as e:
             logger.error(f"Error fetching options chain for {symbol}: {e}")
@@ -275,10 +299,25 @@ class OptionsDataFeed:
                 return []
             
             # Extract unique expiration dates
-            expirations = sorted(set(
-                c.get('expiration_date') for c in chain 
-                if c.get('expiration_date')
-            ))
+            # Handle case where chain items might be strings, dicts, or lists
+            expirations = []
+            for c in chain:
+                if isinstance(c, dict):
+                    exp_date = c.get('expiration_date')
+                    if exp_date:
+                        expirations.append(str(exp_date))  # Ensure string format
+                elif isinstance(c, list):
+                    # If it's a list, extract from each item
+                    for item in c:
+                        if isinstance(item, dict):
+                            exp_date = item.get('expiration_date')
+                            if exp_date:
+                                expirations.append(str(exp_date))
+                elif isinstance(c, str):
+                    # If it's a string, skip (shouldn't happen but handle gracefully)
+                    continue
+            
+            expirations = sorted(set(expirations))
             
             return expirations
             

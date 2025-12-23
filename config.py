@@ -22,6 +22,9 @@ class Config:
     MASSIVE_API_KEY = os.getenv('MASSIVE_API_KEY') or os.getenv('POLYGON_API_KEY', '')
     POLYGON_API_KEY = MASSIVE_API_KEY  # Backwards compatibility alias
     
+    # Alpha Vantage API for earnings calendar (optional)
+    ALPHA_VANTAGE_API_KEY = os.getenv('ALPHA_VANTAGE_API_KEY', '')
+    
     # Trading Parameters
     INITIAL_BALANCE = float(os.getenv('INITIAL_BALANCE', '10000'))
     MAX_ACTIVE_TRADES = int(os.getenv('MAX_ACTIVE_TRADES', '10'))

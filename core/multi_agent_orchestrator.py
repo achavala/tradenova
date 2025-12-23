@@ -77,8 +77,8 @@ class MultiAgentOrchestrator:
             logger.debug(f"{symbol}: Not in configured ticker list")
             return None
         
-        if bars.empty or len(bars) < 50:
-            logger.warning(f"Insufficient data for {symbol}")
+        if bars.empty or len(bars) < 30:  # Reduced from 50 to 30 (Massive provides sufficient data)
+            logger.warning(f"Insufficient data for {symbol}: {len(bars)} bars (need 30+)")
             return None
         
         try:

@@ -47,6 +47,6 @@ try:
         st.markdown("Visit the **Trade History** page to see detailed trade information.")
     else:
         st.info("No trades found yet. Run a backtest or wait for live trades to appear.")
-except Exception as e:
+    except Exception as e:
     st.debug(f"Could not load trades: {e}")
 

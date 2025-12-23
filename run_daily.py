@@ -179,8 +179,11 @@ class DailyTradingRunner:
                     qty = position_info['current_qty']
                     side = 'sell' if position_info['side'] == 'long' else 'buy'
                     
+                    # Check if this is an options position
+                    is_option = position_info.get('instrument_type') == 'option'
+                    
                     order = self.trader.executor.execute_market_order(
-                        symbol, qty, side
+                        symbol, qty, side, is_option=is_option
                     )
                     
                     if order:

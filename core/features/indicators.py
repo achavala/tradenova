@@ -28,8 +28,8 @@ class FeatureEngine:
         Returns:
             Dict with all calculated features
         """
-        if df.empty or len(df) < 50:
-            logger.warning("Insufficient data for feature calculation")
+        if df.empty or len(df) < 30:  # Reduced from 50 to 30 (Massive provides sufficient data)
+            logger.warning(f"Insufficient data for feature calculation: {len(df)} bars (need 30+)")
             return {}
         
         features = {}

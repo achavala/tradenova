@@ -1,0 +1,385 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    TRADENOVA SYSTEM CALL FLOW                                ║
+║                    Complete Detailed Architecture                             ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PHASE 1: SYSTEM STARTUP                                                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    User Command: python3 run_daily.py --paper
+           │
+           ▼
+    ┌─────────────────────┐
+    │ DailyTradingRunner  │
+    │   __init__()        │
+    └─────────────────────┘
+           │
+           ├─> Find RL Model
+           │   ├─> models/grpo_final.zip ✅ (FOUND - 0.20 MB)
+           │   └─> models/ppo_final.zip (fallback)
+           │
+           └─> IntegratedTrader.__init__()
+               │
+               ├─> Initialize AlpacaClient
+               │   └─> Connect to Paper Trading API
+               │
+               ├─> Initialize MassivePriceFeed
+               │   └─> For historical price data (1-min aggregation)
+               │
+               ├─> Initialize MultiAgentOrchestrator
+               │   └─> Load 8 Trading Agents:
+               │       ├─> TrendAgent
+               │       ├─> MeanReversionAgent
+               │       ├─> FVGAgent
+               │       ├─> VolatilityAgent
+               │       ├─> EMAAgent
+               │       ├─> OptionsAgent
+               │       ├─> ThetaHarvesterAgent
+               │       └─> GammaScalperAgent
+               │
+               ├─> Initialize BrokerExecutor
+               │   └─> For order execution (stocks & options)
+               │
+               ├─> Initialize AdvancedRiskManager
+               │   └─> 4-Layer Risk Stack:
+               │       ├─> Layer 1: Gap Risk Monitor
+               │       ├─> Layer 2: IV Regime Filters
+               │       ├─> Layer 3: Portfolio Greeks Caps
+               │       └─> Layer 4: UVaR Check
+               │
+               ├─> Initialize ProfitManager
+               │   └─> Manages profit targets & trailing stops
+               │
+               ├─> Initialize MetricsTracker
+               │   └─> Tracks P&L, win rate, Sharpe ratio
+               │
+               ├─> Load RL Predictor ✅
+               │   ├─> RLPredictor.load_model()
+               │   ├─> Model: GRPO (0.20 MB)
+               │   └─> use_rl = True
+               │
+               ├─> Initialize ModelDegradeDetector
+               │   └─> Monitors RL performance
+               │
+               ├─> Initialize EnsemblePredictor
+               │   └─> Combines RL + Multi-Agent signals
+               │
+               └─> Initialize NewsFilter
+                   └─> Blocks trading during volatile events
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PHASE 2: TRADING CYCLE (Every 5 Minutes)                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    TradingScheduler triggers: trading_cycle()
+           │
+           ▼
+    ┌─────────────────────────────┐
+    │ IntegratedTrader             │
+    │   run_trading_cycle()        │
+    └─────────────────────────────┘
+           │
+           ├─> STEP 1: Update Account Balance
+           │   ├─> client.get_account()
+           │   └─> risk_manager.update_balance(equity)
+           │
+           ├─> STEP 2: Monitor Existing Positions
+           │   └─> _monitor_positions()
+           │       │
+           │       For each position:
+           │       ├─> Get current price
+           │       ├─> profit_manager.check_exits()
+           │       │   ├─> Check profit targets (TP1-TP5)
+           │       │   ├─> Check stop loss
+           │       │   └─> Check trailing stop
+           │       │
+           │       └─> If exit needed:
+           │           ├─> executor.execute_market_order()
+           │           ├─> Calculate P&L
+           │           ├─> risk_manager.record_trade()
+           │           └─> Remove from positions
+           │
+           └─> STEP 3: Scan for New Opportunities
+               └─> _scan_and_trade() [IF positions < 10]
+                   │
+                   ├─> Check Market Open
+                   │   └─> client.is_market_open()
+                   │
+                   ├─> Check News Filter
+                   │   └─> news_filter.is_blocked()
+                   │
+                   ├─> Check Risk Status
+                   │   └─> risk_manager.get_risk_status()
+                   │
+                   └─> For Each Ticker (12 tickers):
+                       │
+                       ├─> Get Historical Bars (60 days)
+                       │   ├─> Try: massive_price_feed.get_daily_bars()
+                       │   └─> Fallback: client.get_historical_bars()
+                       │
+                       ├─> Get Current Price
+                       │   └─> client.get_latest_price(symbol)
+                       │
+                       └─> SIGNAL GENERATION (3 Sources)
+                           │
+                           ├─> SOURCE 1: Multi-Agent System
+                           │   └─> orchestrator.analyze_symbol()
+                           │       │
+                           │       ├─> FeatureEngine.calculate_all_features()
+                           │       │   └─> RSI, EMA, SMA, ATR, Volume, etc.
+                           │       │
+                           │       ├─> RegimeClassifier.classify()
+                           │       │   └─> Determine market regime
+                           │       │
+                           │       └─> For each of 8 agents:
+                           │           ├─> agent.evaluate()
+                           │           └─> Generate TradeIntent
+                           │
+                           │       └─> MetaPolicyController.arbitrate()
+                           │           └─> Select best agent for regime
+                           │
+                           ├─> SOURCE 2: RL Predictor ✅ (ENABLED)
+                           │   └─> rl_predictor.predict()
+                           │       │
+                           │       ├─> Prepare observation vector
+                           │       │   └─> Extract features from bars
+                           │       │
+                           │       ├─> Run GRPO model inference
+                           │       │   └─> model.predict(observation)
+                           │       │
+                           │       ├─> Apply EMA smoothing
+                           │       │   └─> Smooth prediction over time
+                           │       │
+                           │       ├─> Interpret action value
+                           │       │   ├─> action < -0.2 → SHORT
+                           │       │   ├─> action > 0.2 → LONG
+                           │       │   └─> else → FLAT
+                           │       │
+                           │       ├─> Calculate confidence
+                           │       │   └─> Based on action magnitude
+                           │       │
+                           │       └─> Adjust confidence by regime
+                           │           └─> Boost/reduce based on market conditions
+                           │
+                           └─> SOURCE 3: Ensemble Predictor
+                               └─> ensemble.combine_predictions()
+                                   │
+                                   ├─> If RL + Multi-Agent signals:
+                                   │   ├─> Convert to vectors
+                                   │   ├─> Weighted average
+                                   │   │   ├─> RL weight: 40%
+                                   │   │   └─> Trend weight: 25%
+                                   │   ├─> Check agreement
+                                   │   └─> Boost confidence if high agreement
+                                   │
+                                   └─> Returns: Combined signal
+
+                       ├─> Select Best Signal
+                       │   ├─> If ensemble: Use ensemble signal
+                       │   └─> Else: Use highest confidence signal
+                       │
+                       ├─> Validate Signal
+                       │   └─> Must be LONG or SHORT (not FLAT)
+                       │
+                       ├─> Determine Option Type
+                       │   ├─> LONG → Buy CALL options
+                       │   └─> SHORT → Buy PUT options
+                       │
+                       └─> RISK CHECK (4 Layers)
+                           └─> risk_manager.check_trade_allowed()
+                               │
+                               ├─> Layer 1: Gap Risk Monitor
+                               │   └─> Block if earnings/macro within 2 days
+                               │
+                               ├─> Layer 2: IV Regime Filters
+                               │   └─> Block if IV rank < 20 or > 80
+                               │
+                               ├─> Layer 3: Portfolio Greeks Caps
+                               │   └─> Block if delta/gamma limits exceeded
+                               │
+                               └─> Layer 4: UVaR Check
+                                   └─> Block if UVaR > 5% of portfolio
+                           │
+                           └─> If Allowed & Confidence ≥ 0.6:
+                               └─> _execute_trade()
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PHASE 3: OPTIONS TRADE EXECUTION                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    _execute_trade(symbol, signal, current_price, bars)
+           │
+           ├─> Determine Option Type
+           │   ├─> LONG signal → 'call'
+           │   └─> SHORT signal → 'put'
+           │
+           ├─> Get Options Chain
+           │   └─> options_feed.get_expiration_dates(symbol)
+           │
+           ├─> Select Expiration (0-30 DTE)
+           │   └─> Filter: MIN_DTE <= DTE <= MAX_DTE
+           │
+           ├─> Get ATM Option
+           │   └─> options_feed.get_atm_options()
+           │       └─> Finds strike closest to current price
+           │
+           ├─> Get Option Symbol
+           │   └─> Extract from contract: NVDA251226C00185000
+           │
+           ├─> Get Option Price (3-Tier Fallback)
+           │   ├─> Method 1: MassiveOptionsFeed (primary)
+           │   ├─> Method 2: Alpaca Quote API
+           │   └─> Method 3: Contract close_price
+           │
+           ├─> Calculate Position Size
+           │   ├─> position_capital = balance * 0.75 / MAX_ACTIVE_TRADES
+           │   ├─> contract_cost = option_price * 100
+           │   └─> contracts = position_capital / contract_cost
+           │
+           ├─> OTM Fallback (if ATM too expensive)
+           │   └─> If contracts < 1: Try 5% OTM option
+           │
+           └─> Execute Order
+               └─> executor.execute_market_order()
+                   │
+                   ├─> Check: is_option=True
+                   │
+                   └─> options_client.place_option_order()
+                       ├─> option_symbol=NVDA251226C00185000
+                       ├─> qty=contracts
+                       ├─> side='buy'
+                       └─> asset_class='option'
+                   │
+                   └─> If filled:
+                       ├─> Add to positions dict
+                       ├─> Track: option_symbol, qty, entry_price, option_type
+                       └─> Log: "OPTIONS TRADE EXECUTED"
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║ RL (REINFORCEMENT LEARNING) DETAILED EXPLANATION                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+STATUS: ✅ ENABLED
+MODEL: GRPO (Group Relative Policy Optimization)
+SIZE: 0.20 MB
+LOCATION: models/grpo_final.zip
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ WHAT RL DOES                                                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. INPUT:
+   • Historical price bars (60 days of OHLCV data)
+   • Current stock price
+   • Symbol name
+
+2. PROCESS:
+   • Extract features from price data (RSI, EMA, ATR, Volume, etc.)
+   • Classify market regime (trending/ranging/volatile)
+   • Create observation vector for RL model
+   • Run GRPO model inference
+   • Model outputs: action value [-1, 1]
+   • Apply EMA smoothing to reduce noise
+   • Interpret action:
+     - action < -0.2 → SHORT (buy PUT)
+     - action > 0.2 → LONG (buy CALL)
+     - else → FLAT (no trade)
+   • Calculate confidence from action magnitude
+   • Adjust confidence based on regime
+
+3. OUTPUT:
+   • Direction: LONG, SHORT, or FLAT
+   • Confidence: 0.0 to 1.0 (probability)
+   • Reasoning: Text explanation
+
+4. INTEGRATION:
+   • RL signal added to signal pool
+   • Combined with multi-agent signals via Ensemble
+   • Weighted: RL (40%) + Multi-Agent (60%)
+   • Final signal used for trading decision
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ RL MODEL DETAILS                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Type: GRPO (Group Relative Policy Optimization)
+• Advanced RL algorithm
+• Trained on historical market data
+• Learns optimal entry/exit patterns
+• Adapts to different market regimes
+
+Training Data:
+• Historical OHLCV data
+• Multiple market conditions
+• Various volatility regimes
+
+Inference:
+• Real-time prediction during trading
+• Uses current market data
+• Provides independent signal
+
+Performance Monitoring:
+• ModelDegradeDetector tracks performance
+• Auto-disables if performance degrades
+• Falls back to multi-agent only
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║ COMPLETE DECISION FLOW                                                       ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+For Each Ticker:
+    │
+    ├─> Get Data (60 days bars)
+    │
+    ├─> Generate Signals
+    │   ├─> Multi-Agent: 8 agents analyze → Best agent selected
+    │   ├─> RL Predictor: Model inference → LONG/SHORT/FLAT
+    │   └─> Ensemble: Combines both (if available)
+    │
+    ├─> Select Best Signal
+    │   └─> Highest confidence signal
+    │
+    ├─> Validate Signal
+    │   └─> Must be LONG or SHORT (not FLAT)
+    │
+    ├─> Risk Check (4 Layers)
+    │   ├─> Gap Risk: Earnings/macro events?
+    │   ├─> IV Regime: IV rank acceptable?
+    │   ├─> Greeks Caps: Delta/gamma limits?
+    │   └─> UVaR: Portfolio risk acceptable?
+    │
+    └─> If Allowed:
+        ├─> Determine Option Type
+        │   ├─> LONG → CALL
+        │   └─> SHORT → PUT
+        │
+        ├─> Get Options Chain
+        ├─> Select Expiration (0-30 DTE)
+        ├─> Get ATM Option
+        ├─> Get Option Price
+        ├─> Calculate Contracts
+        ├─> OTM Fallback (if needed)
+        └─> Execute Order
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║ KEY COMPONENTS SUMMARY                                                       ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+1. Multi-Agent System: 8 specialized agents analyze market
+2. RL Predictor: ✅ ENABLED - Provides ML-based predictions
+3. Ensemble Predictor: Combines RL + agents with weighted voting
+4. Risk Manager: 4-layer stack blocks risky trades
+5. Options Execution: 0-30 DTE, CALL/PUT only
+6. Position Management: Profit targets, stop loss, trailing stops
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║ SCHEDULE                                                                      ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+08:00 AM - Pre-market warmup
+09:30 AM - Market open (start trading)
+Every 5 min - Trading cycle (scan & execute)
+03:50 PM - Flatten positions (before close)
+04:05 PM - Daily report
+

@@ -100,3 +100,5 @@ cat logs/daily_report_$(date +%Y-%m-%d).txt
 
 
 
+
+

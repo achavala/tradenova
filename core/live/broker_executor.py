@@ -70,7 +70,7 @@ class BrokerExecutor:
         try:
             if is_option:
                 order = self.options_client.place_option_order(
-                    symbol=symbol,
+                    option_symbol=symbol,  # Fixed: was 'symbol=' but function expects 'option_symbol='
                     qty=int(qty),
                     side=side,
                     order_type='market'
@@ -93,7 +93,14 @@ class BrokerExecutor:
             
         except Exception as e:
             logger.error(f"Error executing market order: {e}")
-            return self._retry_order('market', symbol, qty, side, is_option)
+            # Only retry if not already in retry (prevent infinite recursion)
+            if not hasattr(self, '_retrying'):
+                self._retrying = True
+                try:
+                    return self._retry_order('market', symbol, qty, side, is_option)
+                finally:
+                    self._retrying = False
+            return None
     
     def execute_limit_order(
         self,
@@ -121,7 +128,7 @@ class BrokerExecutor:
         try:
             if is_option:
                 order = self.options_client.place_option_order(
-                    symbol=symbol,
+                    option_symbol=symbol,  # Fixed: was 'symbol=' but function expects 'option_symbol='
                     qty=int(qty),
                     side=side,
                     order_type='limit',

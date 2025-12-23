@@ -1,0 +1,83 @@
+============================================================
+OPTIONS TRADING BACKTEST REPORT
+Period: 2025-12-12 to 2025-12-19
+============================================================
+
+Total Signals: 72 (LONG: 18, SHORT: 54)
+Total Trades: 72 (CALL: 18, PUT: 54)
+Total Rejected: 0
+
+TRADES:
+------------------------------------------------------------
+2025-12-12 | NVDA | PUT | $179.30 | SHORT @ 80.00% | EMAAgent
+2025-12-12 | AAPL | PUT | $277.64 | SHORT @ 80.00% | EMAAgent
+2025-12-12 | TSLA | CALL | $450.35 | LONG @ 80.00% | EMAAgent
+2025-12-12 | META | PUT | $644.23 | SHORT @ 80.00% | EMAAgent
+2025-12-12 | GOOG | PUT | $309.74 | SHORT @ 80.00% | EMAAgent
+2025-12-12 | MSFT | PUT | $479.41 | SHORT @ 100.00% | TrendAgent
+2025-12-12 | AMZN | PUT | $226.55 | SHORT @ 80.00% | EMAAgent
+2025-12-12 | MSTR | PUT | $180.22 | SHORT @ 80.00% | EMAAgent
+2025-12-12 | AVGO | PUT | $363.62 | SHORT @ 80.00% | EMAAgent
+2025-12-12 | PLTR | PUT | $180.49 | SHORT @ 80.00% | EMAAgent
+2025-12-12 | AMD | PUT | $213.78 | SHORT @ 80.00% | EMAAgent
+2025-12-12 | INTC | PUT | $39.14 | SHORT @ 80.00% | EMAAgent
+2025-12-15 | NVDA | PUT | $175.86 | SHORT @ 80.00% | EMAAgent
+2025-12-15 | AAPL | PUT | $274.21 | SHORT @ 80.00% | EMAAgent
+2025-12-15 | TSLA | CALL | $473.02 | LONG @ 80.00% | EMAAgent
+2025-12-15 | META | PUT | $641.77 | SHORT @ 80.00% | EMAAgent
+2025-12-15 | GOOG | PUT | $308.00 | SHORT @ 80.00% | EMAAgent
+2025-12-15 | MSFT | PUT | $473.31 | SHORT @ 80.00% | EMAAgent
+2025-12-15 | AMZN | PUT | $223.21 | SHORT @ 80.00% | EMAAgent
+2025-12-15 | MSTR | PUT | $165.28 | SHORT @ 80.00% | EMAAgent
+2025-12-15 | AVGO | PUT | $344.32 | SHORT @ 80.00% | EMAAgent
+2025-12-15 | PLTR | CALL | $183.81 | LONG @ 80.00% | EMAAgent
+2025-12-15 | AMD | PUT | $209.92 | SHORT @ 80.00% | EMAAgent
+2025-12-15 | INTC | PUT | $37.42 | SHORT @ 80.00% | EMAAgent
+2025-12-16 | NVDA | PUT | $176.31 | SHORT @ 80.00% | EMAAgent
+2025-12-16 | AAPL | PUT | $273.25 | SHORT @ 80.00% | EMAAgent
+2025-12-16 | TSLA | CALL | $474.32 | LONG @ 80.00% | EMAAgent
+2025-12-16 | META | CALL | $649.28 | LONG @ 80.00% | EMAAgent
+2025-12-16 | GOOG | PUT | $309.03 | SHORT @ 80.00% | EMAAgent
+2025-12-16 | MSFT | PUT | $473.94 | SHORT @ 80.00% | EMAAgent
+2025-12-16 | AMZN | CALL | $222.41 | LONG @ 90.00% | MeanReversionAgent
+2025-12-16 | MSTR | PUT | $168.50 | SHORT @ 80.00% | EMAAgent
+2025-12-16 | AVGO | PUT | $337.81 | SHORT @ 80.00% | EMAAgent
+2025-12-16 | PLTR | CALL | $183.20 | LONG @ 80.00% | EMAAgent
+2025-12-16 | AMD | PUT | $206.71 | SHORT @ 80.00% | EMAAgent
+2025-12-16 | INTC | PUT | $37.10 | SHORT @ 80.00% | EMAAgent
+2025-12-17 | NVDA | PUT | $174.20 | SHORT @ 80.00% | EMAAgent
+2025-12-17 | AAPL | PUT | $275.47 | SHORT @ 80.00% | EMAAgent
+2025-12-17 | TSLA | CALL | $490.34 | LONG @ 80.00% | EMAAgent
+2025-12-17 | META | CALL | $659.82 | LONG @ 80.00% | EMAAgent
+2025-12-17 | GOOG | PUT | $300.86 | SHORT @ 80.00% | EMAAgent
+2025-12-17 | MSFT | PUT | $477.68 | SHORT @ 80.00% | EMAAgent
+2025-12-17 | AMZN | PUT | $224.90 | SHORT @ 80.00% | EMAAgent
+2025-12-17 | MSTR | PUT | $170.08 | SHORT @ 80.00% | EMAAgent
+2025-12-17 | AVGO | PUT | $331.32 | SHORT @ 80.00% | EMAAgent
+2025-12-17 | PLTR | CALL | $187.14 | LONG @ 80.00% | EMAAgent
+2025-12-17 | AMD | PUT | $206.50 | SHORT @ 80.00% | EMAAgent
+2025-12-17 | INTC | PUT | $37.29 | SHORT @ 80.00% | EMAAgent
+2025-12-18 | NVDA | PUT | $175.00 | SHORT @ 80.00% | EMAAgent
+2025-12-18 | AAPL | PUT | $272.55 | SHORT @ 80.00% | MetaPolicy
+2025-12-18 | TSLA | CALL | $484.70 | LONG @ 80.00% | EMAAgent
+2025-12-18 | META | PUT | $649.94 | SHORT @ 80.00% | EMAAgent
+2025-12-18 | GOOG | PUT | $298.53 | SHORT @ 80.00% | EMAAgent
+2025-12-18 | MSFT | PUT | $477.80 | SHORT @ 80.00% | EMAAgent
+2025-12-18 | AMZN | CALL | $221.87 | LONG @ 90.00% | MeanReversionAgent
+2025-12-18 | MSTR | PUT | $160.54 | SHORT @ 80.00% | EMAAgent
+2025-12-18 | AVGO | PUT | $326.27 | SHORT @ 80.00% | EMAAgent
+2025-12-18 | PLTR | PUT | $178.47 | SHORT @ 80.00% | EMAAgent
+2025-12-18 | AMD | PUT | $198.42 | SHORT @ 80.00% | EMAAgent
+2025-12-18 | INTC | PUT | $36.22 | SHORT @ 80.00% | EMAAgent
+2025-12-19 | NVDA | PUT | $175.88 | SHORT @ 80.00% | EMAAgent
+2025-12-19 | AAPL | PUT | $271.52 | SHORT @ 95.00% | TrendAgent
+2025-12-19 | TSLA | CALL | $488.02 | LONG @ 80.00% | EMAAgent
+2025-12-19 | META | CALL | $662.41 | LONG @ 80.00% | EMAAgent
+2025-12-19 | GOOG | PUT | $306.97 | SHORT @ 80.00% | EMAAgent
+2025-12-19 | MSFT | CALL | $486.39 | LONG @ 80.00% | EMAAgent
+2025-12-19 | AMZN | CALL | $226.76 | LONG @ 80.00% | MetaPolicy
+2025-12-19 | MSTR | PUT | $164.50 | SHORT @ 80.00% | EMAAgent
+2025-12-19 | AVGO | PUT | $338.34 | SHORT @ 80.00% | EMAAgent
+2025-12-19 | PLTR | CALL | $187.00 | LONG @ 80.00% | EMAAgent
+2025-12-19 | AMD | CALL | $211.21 | LONG @ 80.00% | EMAAgent
+2025-12-19 | INTC | PUT | $37.15 | SHORT @ 80.00% | EMAAgent
