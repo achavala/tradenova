@@ -19,7 +19,12 @@ COPY pages/ pages/
 COPY core/ core/
 COPY config.py alpaca_client.py run_daily.py ./
 COPY *.py ./
+COPY start_app.sh ./
 
-RUN mkdir -p logs
+RUN mkdir -p logs && \
+    chmod +x start_app.sh
 
-CMD ["streamlit", "run", "dashboard.py", "--server.port=8080", "--server.address=0.0.0.0", "--server.headless=true"]
+# Set timezone to America/New_York for market hours
+ENV TZ=America/New_York
+
+CMD ["./start_app.sh"]
