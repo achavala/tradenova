@@ -238,7 +238,8 @@ class OptionsDataFeed:
         self,
         symbol: str,
         expiration_date: Optional[str] = None,
-        option_type: str = 'call'
+        option_type: str = 'call',
+        available_contracts: Optional[List[Dict]] = None
     ) -> Optional[Dict]:
         """
         Get at-the-money option for a symbol
@@ -247,6 +248,7 @@ class OptionsDataFeed:
             symbol: Underlying symbol
             expiration_date: Optional expiration date
             option_type: 'call' or 'put'
+            available_contracts: Optional pre-filtered list of contracts (Phase-0: for liquidity-filtered options)
             
         Returns:
             Option contract closest to ATM
@@ -257,10 +259,14 @@ class OptionsDataFeed:
             if not current_price:
                 return None
             
-            # Get options chain
-            chain = self.get_options_chain(symbol, expiration_date)
-            if not chain:
-                return None
+            # Use provided contracts if available (Phase-0: liquidity-filtered), otherwise fetch
+            if available_contracts is not None:
+                chain = available_contracts
+            else:
+                # Get options chain
+                chain = self.get_options_chain(symbol, expiration_date)
+                if not chain:
+                    return None
             
             # Filter by type
             filtered = [

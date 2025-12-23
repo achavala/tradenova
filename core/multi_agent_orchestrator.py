@@ -41,16 +41,14 @@ class MultiAgentOrchestrator:
         self.iv_calculator = IVCalculator()
         self.gex_calculator = GEXCalculator()
         
-        # Initialize agents
+        # Initialize agents (Phase-0: Pruned from 8 to 5 high-quality agents)
+        # Removed: FVGAgent (merged into TrendAgent), ThetaHarvesterAgent, GammaScalperAgent (merged into OptionsAgent)
         self.agents = [
-            TrendAgent(),
+            TrendAgent(),  # Includes FVG logic
             MeanReversionAgent(),
-            FVGAgent(),
             VolatilityAgent(),
             EMAAgent(),  # Works for all tickers in Config.TICKERS
-            OptionsAgent(self.options_feed, self.iv_calculator),
-            ThetaHarvesterAgent(self.options_feed, self.iv_calculator, self.gex_calculator),
-            GammaScalperAgent(self.options_feed, self.iv_calculator, self.gex_calculator)
+            OptionsAgent(self.options_feed, self.iv_calculator),  # Includes theta/gamma logic
         ]
         
         logger.info(f"Initialized MultiAgentOrchestrator with {len(self.agents)} agents")

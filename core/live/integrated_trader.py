@@ -125,6 +125,20 @@ class IntegratedTrader:
         # Position tracking
         self.positions: Dict[str, Dict] = {}
         
+        # Option Universe Filter (Phase-0: Filter BEFORE signals)
+        from core.live.option_universe_filter import OptionUniverseFilter
+        self.option_filter = OptionUniverseFilter(
+            max_spread_pct=20.0,
+            min_bid=0.01,
+            min_bid_size=1,
+            max_quote_age_seconds=5.0
+        )
+        
+        # Daily trade budget (Phase-0: Max 3-5 trades/day)
+        self.daily_trade_count = 0
+        self.daily_trade_limit = 5  # Max new trades per day
+        self.last_trade_date = None
+        
         # Massive price feed (for historical bars)
         self.massive_price_feed = None
         try:
@@ -375,7 +389,8 @@ class IntegratedTrader:
                 rl_pred = None
                 if self.use_rl and self.rl_predictor:
                     rl_pred = self.rl_predictor.predict(symbol, bars, current_price)
-                    if rl_pred['direction'] != 'FLAT' and rl_pred['confidence'] >= 0.6:
+                    # Phase-0: Raise confidence threshold to 0.7 (70%)
+                    if rl_pred['direction'] != 'FLAT' and rl_pred['confidence'] >= 0.7:
                         signals.append({
                             'source': 'rl',
                             'direction': rl_pred['direction'],
@@ -473,8 +488,8 @@ class IntegratedTrader:
                         self._execute_trade(symbol, best_signal, current_price, bars)
                     elif not allowed:
                         logger.warning(f"❌ Trade BLOCKED for {symbol}: {reason} (risk_level: {risk_level})")
-                    elif best_signal['confidence'] < 0.6:
-                        logger.info(f"⚠️  Signal confidence too low for {symbol}: {best_signal['confidence']:.2%} < 0.6")
+                    elif best_signal['confidence'] < 0.7:  # Raised from 0.6 to 0.7
+                        logger.info(f"⚠️  Signal confidence too low for {symbol}: {best_signal['confidence']:.2%} < 0.7")
                 
             except Exception as e:
                 logger.error(f"Error scanning {symbol}: {e}", exc_info=True)
@@ -532,17 +547,47 @@ class IntegratedTrader:
             
             logger.info(f"Selected expiration for {symbol}: {target_expiration} (DTE: {(target_expiration - today).days})")
             
-            # Get ATM option based on signal direction
+            # Phase-0: Get options chain FIRST, then filter for liquidity
+            # This ensures we only consider tradable options BEFORE selecting ATM
+            exp_date_str = target_expiration.strftime('%Y-%m-%d') if isinstance(target_expiration, datetime) else str(target_expiration)
+            options_chain = options_feed.get_options_chain(symbol, exp_date_str)
+            
+            if not options_chain:
+                logger.warning(f"No options chain found for {symbol} expiring {target_expiration}")
+                return
+            
+            # Phase-0: Filter options chain for liquidity BEFORE selecting ATM
+            liquid_options = self.option_filter.filter_options_chain(options_chain)
+            
+            if not liquid_options:
+                logger.warning(f"No liquid options found for {symbol} expiring {target_expiration} after liquidity filter")
+                return
+            
+            # Filter for option type (call/put)
+            filtered_by_type = [opt for opt in liquid_options if opt.get('type', '').lower() == option_type]
+            
+            if not filtered_by_type:
+                logger.warning(f"No liquid {option_type} options found for {symbol} after type filter")
+                return
+            
+            # Get ATM option from filtered, liquid options
             # LONG signal → Buy CALL options
             # SHORT signal → Buy PUT options
             option_contract = options_feed.get_atm_options(
                 symbol,
-                target_expiration.strftime('%Y-%m-%d') if isinstance(target_expiration, datetime) else str(target_expiration),
-                option_type  # 'call' for LONG, 'put' for SHORT
+                exp_date_str,
+                option_type,  # 'call' for LONG, 'put' for SHORT
+                available_contracts=filtered_by_type  # Only consider liquid options
             )
             
             if not option_contract:
-                logger.warning(f"No ATM {option_type} option found for {symbol} expiring {target_expiration}")
+                logger.warning(f"No ATM {option_type} option found for {symbol} expiring {target_expiration} in liquid options")
+                return
+            
+            # Phase-0: Verify selected option is still liquid
+            is_tradable, reason = self.option_filter.is_option_tradable(option_contract)
+            if not is_tradable:
+                logger.warning(f"Selected ATM option failed liquidity check: {reason}")
                 return
             
             # Get option symbol directly from contract data (Alpaca/Massive)
