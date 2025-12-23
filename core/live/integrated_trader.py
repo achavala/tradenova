@@ -134,10 +134,7 @@ class IntegratedTrader:
             max_quote_age_seconds=5.0
         )
         
-        # Daily trade budget (Phase-0: Max 3-5 trades/day)
-        self.daily_trade_count = 0
-        self.daily_trade_limit = 5  # Max new trades per day
-        self.last_trade_date = None
+        # Daily trade budget removed - no limit on trades per day
         
         # Massive price feed (for historical bars)
         self.massive_price_feed = None
