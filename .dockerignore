@@ -37,10 +37,18 @@ models/
 # Backtests / artifacts
 backtest_results/
 backtests/
-logs/
 local-data/
 *.log
 *.pid
+
+# Logs directory - exclude log files but keep Python modules
+logs/*.log
+logs/*.txt
+logs/*.json
+logs/*.jsonl
+logs/tensorboard/
+logs/signals/
+logs/options_selections/
 
 # Not needed in container
 tests/
