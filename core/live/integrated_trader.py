@@ -15,12 +15,19 @@ from core.risk.advanced_risk_manager import AdvancedRiskManager
 from core.risk.profit_manager import ProfitManager
 from core.agents.base_agent import TradeIntent, TradeDirection
 from alpaca_trade_api.rest import TimeFrame
-from rl.predict import RLPredictor
 from logs.metrics_tracker import MetricsTracker
 from core.live.model_degrade_detector import ModelDegradeDetector
 from core.live.ensemble_predictor import EnsemblePredictor
 from core.live.news_filter import NewsFilter
 import os
+
+# RL is optional (requires PyTorch which is too large for Fly.io)
+try:
+    from rl.predict import RLPredictor
+    RL_AVAILABLE = True
+except ImportError:
+    RLPredictor = None
+    RL_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -101,10 +108,12 @@ class IntegratedTrader:
         self.profit_manager = ProfitManager()
         self.metrics_tracker = MetricsTracker()
         
-        # RL predictor (optional)
+        # RL predictor (optional - requires PyTorch which may not be available)
         self.rl_predictor = None
-        self.use_rl = use_rl
-        if use_rl and rl_model_path and os.path.exists(rl_model_path):
+        self.use_rl = use_rl and RL_AVAILABLE
+        if not RL_AVAILABLE and use_rl:
+            logger.info("RL not available (PyTorch not installed) - using multi-agent ensemble only")
+        if self.use_rl and rl_model_path and os.path.exists(rl_model_path):
             try:
                 self.rl_predictor = RLPredictor(rl_model_path, agent_type='grpo')
                 self.rl_predictor.load_model()
