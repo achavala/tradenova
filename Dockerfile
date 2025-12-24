@@ -17,6 +17,10 @@ RUN pip install --no-cache-dir -r requirements.runtime.txt
 COPY dashboard.py .
 COPY pages/ pages/
 COPY core/ core/
+COPY services/ services/
+COPY rl/ rl/
+# Only copy Python files from logs (not log files themselves)
+COPY logs/__init__.py logs/metrics_tracker.py logs/
 COPY config.py alpaca_client.py run_daily.py ./
 COPY *.py ./
 COPY start_app.sh ./
