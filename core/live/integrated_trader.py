@@ -352,9 +352,9 @@ class IntegratedTrader:
                 
                 # Fallback to Alpaca if Massive failed or not available
                 if bars is None or bars.empty:
-                    bars = self.client.get_historical_bars(
-                        symbol, TimeFrame.Day, start_date, end_date
-                    )
+                bars = self.client.get_historical_bars(
+                    symbol, TimeFrame.Day, start_date, end_date
+                )
                     if not bars.empty:
                         logger.debug(f"Got {len(bars)} daily bars from Alpaca for {symbol}")
                 

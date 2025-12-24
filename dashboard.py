@@ -37,10 +37,10 @@ st.markdown("""
 - **📝 System Logs**: Real-time system activity and logs
 """)
 
-# Try to load and show recent trades summary
+# Try to load and show recent trades summary (LIVE TRADES ONLY - no backtest)
 try:
     from core.ui.trade_loader import load_all_trades
-    trades = load_all_trades()
+    trades = load_all_trades(include_backtest=False)  # Only show live trades, not backtest results
     
     if trades:
         st.success(f"✅ Found {len(trades)} total trades")

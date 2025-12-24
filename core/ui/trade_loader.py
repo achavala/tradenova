@@ -195,15 +195,20 @@ def load_live_trades_from_alpaca() -> List[Dict]:
     
     return trades
 
-def load_all_trades() -> List[Dict]:
-    """Load trades from both backtest results and live Alpaca orders"""
+def load_all_trades(include_backtest: bool = False) -> List[Dict]:
+    """Load trades from both backtest results and live Alpaca orders
+    
+    Args:
+        include_backtest: If True, include backtest trades. Default False to show only live trades.
+    """
     all_trades = []
     
-    # Load backtest trades
-    backtest_trades = load_backtest_trades()
-    all_trades.extend(backtest_trades)
+    # Load backtest trades (only if requested)
+    if include_backtest:
+        backtest_trades = load_backtest_trades()
+        all_trades.extend(backtest_trades)
     
-    # Load live trades
+    # Load live trades (always included)
     live_trades = load_live_trades_from_alpaca()
     all_trades.extend(live_trades)
     
