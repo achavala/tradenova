@@ -287,3 +287,6 @@ class MacroCalendar:
         
         logger.info(f"Updated Gap Risk Monitor with {len(events)} macro events")
 
+
+
+

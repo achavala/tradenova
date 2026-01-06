@@ -187,3 +187,6 @@ If you encounter issues:
 **Happy Trading! 📈📱**
 
 
+
+
+

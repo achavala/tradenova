@@ -175,3 +175,6 @@ tail -f logs/tradenova_daily.log | grep -E "BLOCKED|ALLOWED|risk"
 
 **Next Investigation:** Check if `run_trading_cycle()` is actually calling `_scan_and_trade()`, and verify the scheduler is running trading cycles at the expected frequency.
 
+
+
+

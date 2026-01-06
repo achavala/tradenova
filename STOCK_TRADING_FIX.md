@@ -67,3 +67,6 @@ python3 get_trade_details_table.py
 
 Option symbols should look like: `AAPL251219C00267500` (not just `AAPL`)
 
+
+
+

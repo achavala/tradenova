@@ -49,3 +49,6 @@ Machine was exiting immediately. The startup script was trying to run both dashb
 - ✅ No immediate exit
 - ✅ Logs show dashboard startup
 
+
+
+

@@ -189,3 +189,6 @@
 
 **The algorithm WOULD have detected PLTR opportunity (LONG signal @ 80%), but price was below entry level on Dec 17, suggesting the algorithm may have correctly waited for breakout.**
 
+
+
+

@@ -110,3 +110,6 @@ tail -f logs/tradenova_daily.log | grep -E "EXECUTING|Error|options trade|expira
 
 **All errors are now fixed and the system should execute options trades successfully!**
 
+
+
+

@@ -57,3 +57,6 @@ fly logs --app tradenova
 - ✅ Logs show "Starting TradeNova Dashboard..."
 - ✅ No immediate exit
 
+
+
+

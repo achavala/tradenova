@@ -257,3 +257,6 @@ tail -f logs/tradenova_daily.log | grep -i "tsla\|signal\|options"
 
 **The system is close but needs these fixes to capture options opportunities like this TSLA trade.**
 
+
+
+

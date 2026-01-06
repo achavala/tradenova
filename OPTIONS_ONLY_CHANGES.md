@@ -140,3 +140,6 @@ python run_daily.py --paper
 
 **The algorithm is now configured to ONLY buy options (0-30 DTE) and will skip all stock trades and SHORT signals.**
 
+
+
+

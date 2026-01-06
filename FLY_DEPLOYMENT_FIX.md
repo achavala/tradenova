@@ -61,3 +61,6 @@ fly status
 open https://tradenova.fly.dev
 ```
 
+
+
+

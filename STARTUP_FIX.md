@@ -39,3 +39,6 @@ Machine was created but exited immediately. The startup script was too strict wi
 - ✅ If trading system fails, dashboard still runs
 - ✅ Logs show startup status
 
+
+
+

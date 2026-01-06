@@ -187,3 +187,6 @@ if bars.empty or len(bars) < 30:  # Changed from 50
 
 **The system should be using Massive for price bars, not Alpaca. This is why you're running into insufficient data issues despite having a Massive subscription.**
 
+
+
+

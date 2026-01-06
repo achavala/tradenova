@@ -52,8 +52,8 @@ class OptionsBrokerClient:
                 'qty': qty,
                 'side': side,
                 'type': order_type,
-                'time_in_force': time_in_force,
-                'asset_class': 'option'  # Specify options
+                'time_in_force': time_in_force
+                # Note: No 'asset_class' needed - Alpaca detects options from symbol format
             }
             
             if limit_price:

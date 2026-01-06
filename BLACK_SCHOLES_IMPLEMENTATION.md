@@ -281,3 +281,6 @@ greeks = bs.calculate_greeks_only(
 3. Integrate with backtesting for historical Greeks
 4. Use for portfolio risk calculations
 
+
+
+

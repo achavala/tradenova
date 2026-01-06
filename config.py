@@ -28,8 +28,14 @@ class Config:
     # Trading Parameters
     INITIAL_BALANCE = float(os.getenv('INITIAL_BALANCE', '10000'))
     MAX_ACTIVE_TRADES = int(os.getenv('MAX_ACTIVE_TRADES', '10'))
-    POSITION_SIZE_PCT = float(os.getenv('POSITION_SIZE_PCT', '0.50'))
-    STOP_LOSS_PCT = float(os.getenv('STOP_LOSS_PCT', '0.15'))
+    POSITION_SIZE_PCT = float(os.getenv('POSITION_SIZE_PCT', '0.10'))  # 10% max per position (was 50%!)
+    STOP_LOSS_PCT = float(os.getenv('STOP_LOSS_PCT', '0.20'))  # 20% stop-loss per position
+    
+    # Risk Management (CRITICAL)
+    MAX_POSITION_PCT = float(os.getenv('MAX_POSITION_PCT', '0.10'))  # Hard cap: 10% of portfolio per position
+    MAX_PORTFOLIO_HEAT = float(os.getenv('MAX_PORTFOLIO_HEAT', '0.35'))  # Max 35% total options exposure
+    MAX_CORRELATED_EXPOSURE = float(os.getenv('MAX_CORRELATED_EXPOSURE', '0.25'))  # Max 25% in correlated assets
+    MAX_CONTRACTS_PER_TRADE = int(os.getenv('MAX_CONTRACTS_PER_TRADE', '10'))  # Hard cap: 10 contracts per trade
     
     # Profit Targets
     TP1_PCT = float(os.getenv('TP1_PCT', '0.40'))
@@ -55,9 +61,16 @@ class Config:
     ]
     
     # Options Trading Parameters
-    MIN_DTE = int(os.getenv('MIN_DTE', '0'))  # Minimum days to expiration
-    MAX_DTE = int(os.getenv('MAX_DTE', '30'))  # Maximum days to expiration (user requirement: 0-30 DTE)
-    TARGET_DTE = int(os.getenv('TARGET_DTE', '15'))  # Target DTE for option selection
+    # DTE Range: 0-14 days (0 DTE allowed - close positions on profit)
+    # User prefers closing positions when profitable rather than holding
+    MIN_DTE = int(os.getenv('MIN_DTE', '0'))  # Allow 0 DTE - close on profit
+    MAX_DTE = int(os.getenv('MAX_DTE', '14'))  # Maximum 14 days (was 30 - too much time decay variance)
+    TARGET_DTE = int(os.getenv('TARGET_DTE', '10'))  # Target ~10 DTE for optimal gamma/theta balance
+    
+    # Short-term options (0-6 DTE) - only for high confidence
+    MIN_DTE_SHORT_TERM = int(os.getenv('MIN_DTE_SHORT_TERM', '0'))
+    MAX_DTE_SHORT_TERM = int(os.getenv('MAX_DTE_SHORT_TERM', '6'))
+    SHORT_TERM_CONFIDENCE_THRESHOLD = float(os.getenv('SHORT_TERM_CONFIDENCE_THRESHOLD', '0.90'))  # 90%+ confidence only
     
     # Logging
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')

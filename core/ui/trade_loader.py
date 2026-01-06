@@ -41,7 +41,7 @@ def load_backtest_trades() -> List[Dict]:
     return trades
 
 def load_live_trades_from_alpaca() -> List[Dict]:
-    """Load trades from live Alpaca orders"""
+    """Load trades from live Alpaca orders and positions"""
     trades = []
     
     try:
@@ -59,46 +59,90 @@ def load_live_trades_from_alpaca() -> List[Dict]:
             Config.ALPACA_BASE_URL
         )
         
-        # Get all filled orders
+        # First, get all current positions with real P&L
+        positions = client.get_positions()
+        position_symbols = set()
+        
+        for pos in positions:
+            symbol = pos.get('symbol', '')
+            position_symbols.add(symbol)
+            
+            qty = abs(float(pos.get('qty', 0)))
+            entry_price = float(pos.get('avg_entry_price', 0))
+            current_price = float(pos.get('current_price', 0))
+            unrealized_pl = float(pos.get('unrealized_pl', 0))
+            unrealized_plpc = float(pos.get('unrealized_plpc', 0)) * 100  # Convert to %
+            cost_basis = float(pos.get('cost_basis', 0))
+            market_value = float(pos.get('market_value', 0))
+            
+            # Determine if this is an option
+            is_option = len(symbol) > 10  # Options symbols are longer
+            
+            # Extract underlying for options
+            underlying = symbol[:4].rstrip('0123456789') if is_option else symbol
+            
+            trade = {
+                'symbol': symbol,
+                'underlying': underlying,
+                'entry_time': datetime.now().isoformat(),  # Will be updated from orders
+                'exit_time': None,  # Still open
+                'entry_price': entry_price,
+                'exit_price': current_price,  # Current price (unrealized)
+                'qty': qty,
+                'side': pos.get('side', 'long'),
+                'pnl': unrealized_pl,
+                'pnl_pct': unrealized_plpc,
+                'cost_basis': cost_basis,
+                'market_value': market_value,
+                'reason': 'open_position',
+                'status': 'OPEN',
+                'agent': 'Live Trading',
+                'source': 'Live Trading',
+                'is_option': is_option
+            }
+            trades.append(trade)
+        
+        # Next, get filled orders to find entry times and closed trades
         orders = client.get_orders(status='all', limit=200)
         
-        # Group orders by symbol to match buy/sell pairs
-        order_pairs = {}
-        
+        # Track orders by symbol
+        symbol_orders = {}
         for order in orders:
-            if order['status'] != 'filled' or not order.get('filled_avg_price'):
+            if order.get('status') != 'filled':
                 continue
             
-            symbol = order['symbol']
-            side = order['side']
-            filled_qty = order.get('filled_qty', order['qty'])
-            filled_price = order['filled_avg_price']
+            symbol = order.get('symbol', '')
+            if symbol not in symbol_orders:
+                symbol_orders[symbol] = []
             
-            # Get order timestamp (approximate from order ID or use current time)
-            # Alpaca order IDs contain timestamp info, but we'll use a simpler approach
-            order_time = datetime.now()  # Fallback
-            
-            if symbol not in order_pairs:
-                order_pairs[symbol] = {'buys': [], 'sells': []}
-            
-            order_info = {
-                'time': order_time,
-                'qty': filled_qty,
-                'price': filled_price,
-                'order_id': order.get('id', '')
-            }
-            
-            if side == 'buy':
-                order_pairs[symbol]['buys'].append(order_info)
-            else:
-                order_pairs[symbol]['sells'].append(order_info)
+            symbol_orders[symbol].append({
+                'id': order.get('id', ''),
+                'side': order.get('side', ''),
+                'qty': float(order.get('filled_qty', order.get('qty', 0))),
+                'price': float(order.get('filled_avg_price', 0)),
+                'created_at': order.get('created_at', datetime.now().isoformat()),
+                'filled_at': order.get('filled_at', order.get('created_at', datetime.now().isoformat()))
+            })
         
-        # Match buy/sell pairs to create trades
-        for symbol, pairs in order_pairs.items():
-            buys = sorted(pairs['buys'], key=lambda x: x['time'])
-            sells = sorted(pairs['sells'], key=lambda x: x['time'])
+        # Update entry times for open positions
+        for trade in trades:
+            symbol = trade['symbol']
+            if symbol in symbol_orders:
+                # Find the earliest buy order for this symbol
+                buy_orders = [o for o in symbol_orders[symbol] if o['side'] == 'buy']
+                if buy_orders:
+                    buy_orders.sort(key=lambda x: x['filled_at'])
+                    trade['entry_time'] = buy_orders[0]['filled_at']
+        
+        # Find closed trades (matched buy/sell pairs for symbols not in current positions)
+        for symbol, orders_list in symbol_orders.items():
+            if symbol in position_symbols:
+                continue  # Skip if we still have open position
             
-            # Simple matching: pair earliest buy with earliest sell
+            buys = sorted([o for o in orders_list if o['side'] == 'buy'], key=lambda x: x['filled_at'])
+            sells = sorted([o for o in orders_list if o['side'] == 'sell'], key=lambda x: x['filled_at'])
+            
+            # Match buys with sells
             buy_idx = 0
             sell_idx = 0
             
@@ -106,33 +150,36 @@ def load_live_trades_from_alpaca() -> List[Dict]:
                 buy = buys[buy_idx]
                 sell = sells[sell_idx]
                 
-                # Create trade entry
+                qty = min(buy['qty'], sell['qty'])
                 entry_price = buy['price']
                 exit_price = sell['price']
-                qty = min(buy['qty'], sell['qty'])
                 
-                pnl = (exit_price - entry_price) * qty
+                pnl = (exit_price - entry_price) * qty * (100 if len(symbol) > 10 else 1)  # Options = 100 shares
                 pnl_pct = ((exit_price - entry_price) / entry_price) * 100 if entry_price > 0 else 0
                 
-                trade = {
+                is_option = len(symbol) > 10
+                underlying = symbol[:4].rstrip('0123456789') if is_option else symbol
+                
+                closed_trade = {
                     'symbol': symbol,
-                    'entry_time': buy['time'].isoformat() if hasattr(buy['time'], 'isoformat') else str(buy['time']),
-                    'exit_time': sell['time'].isoformat() if hasattr(sell['time'], 'isoformat') else str(sell['time']),
+                    'underlying': underlying,
+                    'entry_time': buy['filled_at'],
+                    'exit_time': sell['filled_at'],
                     'entry_price': entry_price,
                     'exit_price': exit_price,
                     'qty': qty,
                     'side': 'long',
                     'pnl': pnl,
                     'pnl_pct': pnl_pct,
-                    'reason': 'live_trade',
+                    'reason': 'closed_trade',
+                    'status': 'CLOSED',
                     'agent': 'Live Trading',
                     'source': 'Live Trading',
-                    'order_id': f"{buy['order_id']}/{sell['order_id']}"
+                    'is_option': is_option,
+                    'order_id': f"{buy['id']}/{sell['id']}"
                 }
+                trades.append(closed_trade)
                 
-                trades.append(trade)
-                
-                # Reduce quantities
                 buy['qty'] -= qty
                 sell['qty'] -= qty
                 
@@ -140,58 +187,13 @@ def load_live_trades_from_alpaca() -> List[Dict]:
                     buy_idx += 1
                 if sell['qty'] <= 0:
                     sell_idx += 1
-            
-            # Handle unmatched positions (still open)
-            for buy in buys[buy_idx:]:
-                if buy['qty'] > 0:
-                    # Open position
-                    current_price = entry_price  # Would need to fetch from positions API
-                    trade = {
-                        'symbol': symbol,
-                        'entry_time': buy['time'].isoformat() if hasattr(buy['time'], 'isoformat') else str(buy['time']),
-                        'exit_time': None,
-                        'entry_price': buy['price'],
-                        'exit_price': None,
-                        'qty': buy['qty'],
-                        'side': 'long',
-                        'pnl': None,  # Unrealized
-                        'pnl_pct': None,
-                        'reason': 'open_position',
-                        'agent': 'Live Trading',
-                        'source': 'Live Trading',
-                        'order_id': buy['order_id']
-                    }
-                    trades.append(trade)
-        
-            # Also get current positions for open trades
-            positions = client.get_positions()
-            for pos in positions:
-                # Check if we already have this as an open trade
-                existing = [t for t in trades if t['symbol'] == pos['symbol'] and t.get('exit_time') is None]
-                if not existing:
-                    trade = {
-                        'symbol': pos['symbol'],
-                        'entry_time': datetime.now().isoformat(),  # Approximate
-                        'exit_time': None,
-                        'entry_price': pos.get('avg_entry_price', 0),
-                        'exit_price': pos.get('current_price', 0),
-                        'qty': abs(pos.get('qty', 0)),
-                        'side': pos.get('side', 'long'),
-                        'pnl': pos.get('unrealized_pl', 0),
-                        'pnl_pct': pos.get('unrealized_plpc', 0) * 100 if pos.get('unrealized_plpc') else None,
-                        'reason': 'open_position',
-                        'agent': 'Live Trading',
-                        'source': 'Live Trading',
-                        'order_id': 'current_position'
-                    }
-                    trades.append(trade)
         
     except ImportError as e:
         logger.debug(f"Could not import Alpaca modules: {e}")
-        # Alpaca modules not available, return empty
     except Exception as e:
         logger.error(f"Error loading live trades from Alpaca: {e}")
-        # Don't fail completely, just return empty list
+        import traceback
+        traceback.print_exc()
     
     return trades
 
@@ -213,4 +215,3 @@ def load_all_trades(include_backtest: bool = False) -> List[Dict]:
     all_trades.extend(live_trades)
     
     return all_trades
-

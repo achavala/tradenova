@@ -7,8 +7,12 @@ import schedule
 import time
 from datetime import datetime, time as dt_time
 from typing import Callable, Optional
+import pytz
 
 logger = logging.getLogger(__name__)
+
+# Market timezone (Eastern Time)
+ET = pytz.timezone('America/New_York')
 
 class TradingScheduler:
     """Scheduler for automated trading"""
@@ -99,26 +103,29 @@ class TradingScheduler:
         logger.info("Trading scheduler stopped")
     
     def is_market_hours(self) -> bool:
-        """Check if current time is during market hours"""
-        now = datetime.now().time()
+        """Check if current time is during market hours (Eastern Time)"""
+        # Use Eastern Time for market hours
+        et_now = datetime.now(ET).time()
         market_open = dt_time(9, 30)
         market_close = dt_time(16, 0)
         
-        return market_open <= now <= market_close
+        is_open = market_open <= et_now <= market_close
+        logger.debug(f"Market hours check: ET={et_now}, open={market_open}, close={market_close}, is_open={is_open}")
+        return is_open
     
     def is_pre_market(self) -> bool:
-        """Check if current time is pre-market"""
-        now = datetime.now().time()
+        """Check if current time is pre-market (Eastern Time)"""
+        et_now = datetime.now(ET).time()
         pre_market_start = dt_time(4, 0)
         market_open = dt_time(9, 30)
         
-        return pre_market_start <= now < market_open
+        return pre_market_start <= et_now < market_open
     
     def is_after_hours(self) -> bool:
-        """Check if current time is after hours"""
-        now = datetime.now().time()
+        """Check if current time is after hours (Eastern Time)"""
+        et_now = datetime.now(ET).time()
         market_close = dt_time(16, 0)
         after_hours_end = dt_time(20, 0)
         
-        return market_close < now <= after_hours_end
+        return market_close < et_now <= after_hours_end
 

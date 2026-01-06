@@ -131,3 +131,6 @@ Keep the stock positions but ensure the system only opens NEW options positions.
 **Current Issue:** Old stock positions from previous system are still open.  
 **Solution:** New system is configured for options only. Old positions need to be closed separately.
 
+
+
+

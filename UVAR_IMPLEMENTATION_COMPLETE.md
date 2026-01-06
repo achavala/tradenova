@@ -268,3 +268,6 @@ Trade Allowed / Blocked / Forced Reduction
 - Conservative thresholds (safety first)
 - Incremental checks (before adding positions)
 
+
+
+

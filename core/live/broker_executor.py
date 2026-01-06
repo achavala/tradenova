@@ -1,16 +1,63 @@
 """
 Broker Execution Engine
-Handles all order types and execution logic
+Handles all order types and execution logic with robust retry and error handling
 """
 import logging
+import time
 from typing import Dict, Optional, List
 from datetime import datetime, timedelta
 from enum import Enum
+from functools import wraps
 
 from alpaca_client import AlpacaClient
 from core.live.options_broker_client import OptionsBrokerClient
 
 logger = logging.getLogger(__name__)
+
+
+def exponential_backoff_retry(max_retries: int = 3, base_delay: float = 1.0, max_delay: float = 30.0):
+    """
+    Decorator for exponential backoff retry logic
+    
+    Args:
+        max_retries: Maximum number of retry attempts
+        base_delay: Initial delay in seconds
+        max_delay: Maximum delay in seconds
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+                    
+                    if attempt < max_retries:
+                        # Calculate delay with exponential backoff
+                        delay = min(base_delay * (2 ** attempt), max_delay)
+                        # Add some jitter (±20%)
+                        import random
+                        delay = delay * (0.8 + random.random() * 0.4)
+                        
+                        logger.warning(
+                            f"Attempt {attempt + 1}/{max_retries + 1} failed for {func.__name__}: {e}. "
+                            f"Retrying in {delay:.1f}s..."
+                        )
+                        time.sleep(delay)
+                    else:
+                        logger.error(
+                            f"All {max_retries + 1} attempts failed for {func.__name__}: {e}"
+                        )
+            
+            # Re-raise the last exception if all retries failed
+            raise last_exception
+        
+        return wrapper
+    return decorator
+
 
 class OrderType(Enum):
     """Order types"""
@@ -20,6 +67,7 @@ class OrderType(Enum):
     STOP_LIMIT = "stop_limit"
     BRACKET = "bracket"
     OCO = "oco"  # One-Cancels-Other
+
 
 class OrderStatus(Enum):
     """Order status"""
@@ -31,8 +79,9 @@ class OrderStatus(Enum):
     REJECTED = "rejected"
     EXPIRED = "expired"
 
+
 class BrokerExecutor:
-    """Broker execution engine"""
+    """Broker execution engine with robust error handling"""
     
     def __init__(self, alpaca_client: AlpacaClient):
         """
@@ -46,7 +95,8 @@ class BrokerExecutor:
         self.pending_orders: Dict[str, Dict] = {}
         self.order_history: List[Dict] = []
         self.max_retries = 3
-        self.retry_delay = 1.0  # seconds
+        self.base_retry_delay = 1.0
+        self.max_retry_delay = 30.0
         
     def execute_market_order(
         self,
@@ -56,51 +106,24 @@ class BrokerExecutor:
         is_option: bool = False
     ) -> Optional[Dict]:
         """
-        Execute market order
+        Execute market order with retry logic
         
         Args:
-            symbol: Trading symbol
+            symbol: Trading symbol (stock ticker or options contract symbol)
             qty: Quantity
             side: 'buy' or 'sell'
             is_option: Whether this is an options order
             
         Returns:
-            Order result dictionary
+            Order result dictionary or None on failure
         """
-        try:
-            if is_option:
-                order = self.options_client.place_option_order(
-                    option_symbol=symbol,  # Fixed: was 'symbol=' but function expects 'option_symbol='
-                    qty=int(qty),
-                    side=side,
-                    order_type='market'
-                )
-            else:
-                order = self.client.place_order(
-                    symbol=symbol,
-                    qty=qty,
-                    side=side,
-                    order_type='market'
-                )
-            
-            if order:
-                order['timestamp'] = datetime.now().isoformat()
-                order['order_type'] = OrderType.MARKET.value
-                self.order_history.append(order)
-                logger.info(f"Market order executed: {side} {qty} {symbol}")
-            
-            return order
-            
-        except Exception as e:
-            logger.error(f"Error executing market order: {e}")
-            # Only retry if not already in retry (prevent infinite recursion)
-            if not hasattr(self, '_retrying'):
-                self._retrying = True
-                try:
-                    return self._retry_order('market', symbol, qty, side, is_option)
-                finally:
-                    self._retrying = False
-            return None
+        return self._execute_with_retry(
+            order_type='market',
+            symbol=symbol,
+            qty=qty,
+            side=side,
+            is_option=is_option
+        )
     
     def execute_limit_order(
         self,
@@ -112,7 +135,7 @@ class BrokerExecutor:
         time_in_force: str = 'day'
     ) -> Optional[Dict]:
         """
-        Execute limit order
+        Execute limit order with retry logic
         
         Args:
             symbol: Trading symbol
@@ -123,41 +146,169 @@ class BrokerExecutor:
             time_in_force: 'day', 'gtc', 'ioc', 'fok'
             
         Returns:
-            Order result dictionary
+            Order result dictionary or None on failure
         """
-        try:
-            if is_option:
-                order = self.options_client.place_option_order(
-                    option_symbol=symbol,  # Fixed: was 'symbol=' but function expects 'option_symbol='
-                    qty=int(qty),
-                    side=side,
-                    order_type='limit',
-                    limit_price=limit_price,
-                    time_in_force=time_in_force
-                )
-            else:
-                order = self.client.place_order(
-                    symbol=symbol,
-                    qty=qty,
-                    side=side,
-                    order_type='limit',
-                    limit_price=limit_price,
-                    time_in_force=time_in_force
-                )
+        return self._execute_with_retry(
+            order_type='limit',
+            symbol=symbol,
+            qty=qty,
+            side=side,
+            is_option=is_option,
+            limit_price=limit_price,
+            time_in_force=time_in_force
+        )
+    
+    def _execute_with_retry(
+        self,
+        order_type: str,
+        symbol: str,
+        qty: float,
+        side: str,
+        is_option: bool,
+        **kwargs
+    ) -> Optional[Dict]:
+        """
+        Execute order with exponential backoff retry
+        
+        Args:
+            order_type: 'market' or 'limit'
+            symbol: Trading symbol
+            qty: Quantity
+            side: 'buy' or 'sell'
+            is_option: Whether this is an options order
+            **kwargs: Additional order parameters (limit_price, time_in_force, etc.)
             
-            if order:
-                order['timestamp'] = datetime.now().isoformat()
-                order['order_type'] = OrderType.LIMIT.value
-                order['limit_price'] = limit_price
-                self.pending_orders[order['id']] = order
-                self.order_history.append(order)
-                logger.info(f"Limit order placed: {side} {qty} {symbol} @ ${limit_price:.2f}")
-            
-            return order
-            
-        except Exception as e:
-            logger.error(f"Error executing limit order: {e}")
-            return self._retry_order('limit', symbol, qty, side, is_option, limit_price=limit_price)
+        Returns:
+            Order result dictionary or None on failure
+        """
+        last_exception = None
+        
+        for attempt in range(self.max_retries + 1):
+            try:
+                if order_type == 'market':
+                    order = self._place_market_order(symbol, qty, side, is_option)
+                elif order_type == 'limit':
+                    order = self._place_limit_order(
+                        symbol, qty, side, is_option,
+                        kwargs.get('limit_price'),
+                        kwargs.get('time_in_force', 'day')
+                    )
+                else:
+                    raise ValueError(f"Unknown order type: {order_type}")
+                
+                if order:
+                    order['timestamp'] = datetime.now().isoformat()
+                    order['order_type'] = order_type
+                    if order_type == 'limit':
+                        order['limit_price'] = kwargs.get('limit_price')
+                    
+                    self.order_history.append(order)
+                    logger.info(f"Order executed successfully: {side} {qty} {symbol} ({order_type})")
+                    return order
+                else:
+                    raise RuntimeError(f"Order returned None for {symbol}")
+                    
+            except Exception as e:
+                last_exception = e
+                error_str = str(e)
+                
+                # Check if this is a non-retryable error
+                non_retryable_errors = [
+                    'insufficient',
+                    'invalid symbol',
+                    'market closed',
+                    'unauthorized',
+                    'forbidden'
+                ]
+                
+                is_non_retryable = any(err in error_str.lower() for err in non_retryable_errors)
+                
+                if is_non_retryable:
+                    logger.error(f"Non-retryable error for {symbol}: {e}")
+                    break
+                
+                if attempt < self.max_retries:
+                    # Calculate exponential backoff delay
+                    delay = min(
+                        self.base_retry_delay * (2 ** attempt),
+                        self.max_retry_delay
+                    )
+                    # Add jitter (±20%)
+                    import random
+                    delay = delay * (0.8 + random.random() * 0.4)
+                    
+                    logger.warning(
+                        f"Attempt {attempt + 1}/{self.max_retries + 1} failed for {symbol}: {e}. "
+                        f"Retrying in {delay:.1f}s..."
+                    )
+                    time.sleep(delay)
+                else:
+                    logger.error(f"All {self.max_retries + 1} attempts failed for {symbol}: {e}")
+        
+        return None
+    
+    def _place_market_order(
+        self,
+        symbol: str,
+        qty: float,
+        side: str,
+        is_option: bool
+    ) -> Optional[Dict]:
+        """Place a market order (single attempt, no retry)"""
+        if is_option:
+            # Options order - use options client
+            order = self.options_client.place_option_order(
+                option_symbol=symbol,
+                qty=int(qty),
+                side=side,
+                order_type='market'
+            )
+        else:
+            # Stock order - use regular client
+            order = self.client.place_order(
+                symbol=symbol,
+                qty=qty,
+                side=side,
+                order_type='market'
+            )
+        
+        return order
+    
+    def _place_limit_order(
+        self,
+        symbol: str,
+        qty: float,
+        side: str,
+        is_option: bool,
+        limit_price: float,
+        time_in_force: str = 'day'
+    ) -> Optional[Dict]:
+        """Place a limit order (single attempt, no retry)"""
+        if is_option:
+            # Options order
+            order = self.options_client.place_option_order(
+                option_symbol=symbol,
+                qty=int(qty),
+                side=side,
+                order_type='limit',
+                limit_price=limit_price,
+                time_in_force=time_in_force
+            )
+        else:
+            # Stock order
+            order = self.client.place_order(
+                symbol=symbol,
+                qty=qty,
+                side=side,
+                order_type='limit',
+                limit_price=limit_price,
+                time_in_force=time_in_force
+            )
+        
+        if order and is_option is False:
+            self.pending_orders[order['id']] = order
+        
+        return order
     
     def execute_bracket_order(
         self,
@@ -308,11 +459,14 @@ class BrokerExecutor:
         cutoff_time = datetime.now() - timedelta(minutes=max_age_minutes)
         
         for order_id, order in list(self.pending_orders.items()):
-            order_time = datetime.fromisoformat(order.get('timestamp', ''))
-            
-            if order_time < cutoff_time:
-                if self.cancel_order(order_id):
-                    cancelled += 1
+            try:
+                order_time = datetime.fromisoformat(order.get('timestamp', ''))
+                
+                if order_time < cutoff_time:
+                    if self.cancel_order(order_id):
+                        cancelled += 1
+            except (ValueError, TypeError):
+                continue
         
         if cancelled > 0:
             logger.info(f"Cancelled {cancelled} stale orders")
@@ -333,34 +487,6 @@ class BrokerExecutor:
         except Exception as e:
             logger.error(f"Error getting order status: {e}")
             return None
-    
-    def _retry_order(
-        self,
-        order_type: str,
-        symbol: str,
-        qty: float,
-        side: str,
-        is_option: bool,
-        **kwargs
-    ) -> Optional[Dict]:
-        """Retry order execution"""
-        import time
-        
-        for attempt in range(self.max_retries):
-            try:
-                time.sleep(self.retry_delay * (attempt + 1))
-                
-                if order_type == 'market':
-                    return self.execute_market_order(symbol, qty, side, is_option)
-                elif order_type == 'limit':
-                    return self.execute_limit_order(
-                        symbol, qty, side, kwargs.get('limit_price'), is_option
-                    )
-            except Exception as e:
-                logger.warning(f"Retry {attempt + 1} failed: {e}")
-        
-        logger.error(f"Failed to execute {order_type} order after {self.max_retries} retries")
-        return None
     
     def get_position_book(self) -> Dict:
         """Get current positions with details"""
@@ -388,4 +514,3 @@ class BrokerExecutor:
     def get_account_status(self) -> Dict:
         """Get account status"""
         return self.client.get_account()
-

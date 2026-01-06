@@ -251,3 +251,6 @@ tail -f logs/tradenova_daily.log | grep -E 'LONG|SHORT|CALL|PUT|Buying.*options'
 
 **Fix applied and system ready for both LONG and SHORT trading!**
 
+
+
+

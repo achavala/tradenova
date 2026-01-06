@@ -31,3 +31,6 @@ exec streamlit run dashboard.py \
 # If Streamlit exits, kill trading system
 trap "kill $TRADING_PID 2>/dev/null || true" EXIT
 
+
+
+

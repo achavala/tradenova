@@ -198,3 +198,6 @@ This will test all configured symbols and report data collection status.
 
 All systems operational. Ready to integrate with trading logic.
 
+
+
+

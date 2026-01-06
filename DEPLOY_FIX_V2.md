@@ -58,3 +58,6 @@ fly logs --app tradenova
 fly status
 ```
 
+
+
+

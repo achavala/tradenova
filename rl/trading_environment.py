@@ -15,13 +15,15 @@ class TradingEnvironment(gym.Env):
     """
     Trading environment for RL training
     
-    State Space:
-    - Technical indicators (RSI, EMA, ATR, ADX, etc.)
-    - Regime features (regime type, confidence, volatility)
-    - Market features (price, volume, VWAP deviation)
-    - IV metrics (IV Rank, IV Percentile)
-    - GEX data
-    - Position state (current position, P&L)
+    State Space (48 features to match trained model):
+    - Price features (5)
+    - Technical indicators (15)
+    - Regime features (4)
+    - IV metrics (4)
+    - Volume features (5)
+    - Momentum features (5)
+    - Historical returns (5)
+    - Position state (5)
     
     Action Space:
     - Continuous value [-1, 1]
@@ -66,9 +68,8 @@ class TradingEnvironment(gym.Env):
         self.max_position_size = max_position_size
         self.lookback_window = lookback_window
         
-        # State space dimensions
-        # Features: price features (5) + technical indicators (10) + regime (4) + IV (2) + position (2) = 23
-        self.state_dim = 23
+        # State space dimensions - MUST MATCH TRAINED MODEL (48 features)
+        self.state_dim = 48
         
         # Action space: continuous [-1, 1]
         self.action_space = spaces.Box(
@@ -106,10 +107,14 @@ class TradingEnvironment(gym.Env):
         super().reset(seed=seed)
         
         # Start at random point (but leave room for lookback)
-        self.current_step = np.random.randint(
-            self.lookback_window,
-            len(self.data) - 100  # Leave room for episode
-        )
+        max_start = max(self.lookback_window, len(self.data) - 100)
+        if max_start <= self.lookback_window:
+            self.current_step = self.lookback_window
+        else:
+            self.current_step = np.random.randint(
+                self.lookback_window,
+                max_start
+            )
         
         self.balance = self.initial_balance
         self.position = 0
@@ -299,7 +304,7 @@ class TradingEnvironment(gym.Env):
         return reward
     
     def _get_observation(self) -> np.ndarray:
-        """Get current observation/state"""
+        """Get current observation/state - 48 features to match trained model"""
         if self.current_step < self.lookback_window:
             # Pad with zeros if not enough history
             return np.zeros(self.state_dim, dtype=np.float32)
@@ -313,49 +318,93 @@ class TradingEnvironment(gym.Env):
         return observation
     
     def _get_current_features(self) -> List[float]:
-        """Extract current features"""
+        """Extract current features - 48 features to match trained model"""
         row = self.data.iloc[self.current_step]
         
         features = []
         
-        # Price features (normalized)
-        features.append(row.get('close', 0) / 100.0)  # Normalize price
-        features.append(row.get('volume', 0) / 1e6)  # Normalize volume
-        features.append(row.get('high', 0) / 100.0 - row.get('close', 0) / 100.0)  # High-close
-        features.append(row.get('close', 0) / 100.0 - row.get('low', 0) / 100.0)  # Close-low
-        features.append((row.get('close', 0) - row.get('open', 0)) / row.get('open', 0) if row.get('open', 0) > 0 else 0)  # Return
+        # === Price features (5) ===
+        close = row.get('close', 100.0)
+        open_price = row.get('open', close)
+        high = row.get('high', close)
+        low = row.get('low', close)
+        volume = row.get('volume', 0)
         
-        # Technical indicators
+        features.append(close / 100.0)  # Normalized price
+        features.append(volume / 1e6)  # Normalized volume
+        features.append((high - close) / close if close > 0 else 0)  # High-close %
+        features.append((close - low) / close if close > 0 else 0)  # Close-low %
+        features.append((close - open_price) / open_price if open_price > 0 else 0)  # Return
+        
+        # === Technical indicators (15) ===
         features.append(row.get('rsi', 50) / 100.0)  # RSI normalized
-        features.append(row.get('ema_9', 0) / 100.0 if 'ema_9' in row else 0)
-        features.append(row.get('ema_21', 0) / 100.0 if 'ema_21' in row else 0)
-        features.append(row.get('sma_20', 0) / 100.0 if 'sma_20' in row else 0)
-        features.append(row.get('atr_pct', 0) / 10.0)  # ATR % normalized
-        features.append(row.get('adx', 0) / 100.0)  # ADX normalized
+        features.append(row.get('rsi_14', row.get('rsi', 50)) / 100.0)  # RSI 14
+        features.append(row.get('ema_9', close) / 100.0)  # EMA 9
+        features.append(row.get('ema_21', close) / 100.0)  # EMA 21
+        features.append(row.get('ema_50', close) / 100.0)  # EMA 50
+        features.append(row.get('sma_20', close) / 100.0)  # SMA 20
+        features.append(row.get('sma_50', close) / 100.0)  # SMA 50
+        features.append(row.get('atr_pct', 2.0) / 10.0)  # ATR % normalized
+        features.append(row.get('atr', close * 0.02) / close if close > 0 else 0)  # ATR ratio
+        features.append(row.get('adx', 20) / 100.0)  # ADX normalized
         features.append(row.get('vwap_deviation', 0) / 10.0)  # VWAP deviation
-        features.append(row.get('hurst', 0.5))  # Hurst (0-1)
-        features.append(row.get('slope', 0) * 1000)  # Slope normalized
-        features.append(row.get('r_squared', 0))  # R² (0-1)
+        features.append(row.get('hurst', 0.5))  # Hurst exponent
+        features.append(row.get('slope', 0) * 1000)  # Price slope
+        features.append(row.get('r_squared', 0.5))  # R-squared
+        features.append(row.get('macd_signal', 0) / close if close > 0 else 0)  # MACD signal ratio
         
-        # Regime features (one-hot encoded)
-        regime_type = row.get('regime_type', 0)
+        # === Regime features (4) ===
+        regime_type = row.get('regime_type', 'TREND')
         if isinstance(regime_type, str):
             regime_map = {'TREND': 0, 'MEAN_REVERSION': 1, 'EXPANSION': 2, 'COMPRESSION': 3}
-            regime_encoded = [0, 0, 0, 0]
-            regime_encoded[regime_map.get(regime_type, 0)] = 1
+            regime_encoded = [0.0, 0.0, 0.0, 0.0]
+            regime_idx = regime_map.get(regime_type, 0)
+            regime_encoded[regime_idx] = 1.0
             features.extend(regime_encoded)
         else:
-            features.extend([0, 0, 0, 0])
+            features.extend([1.0, 0.0, 0.0, 0.0])  # Default to TREND
         
-        # IV metrics
-        features.append(row.get('iv_rank', 50) / 100.0 if 'iv_rank' in row else 0.5)
-        features.append(row.get('iv_percentile', 50) / 100.0 if 'iv_percentile' in row else 0.5)
+        # === IV metrics (4) ===
+        features.append(row.get('iv_rank', 50) / 100.0)
+        features.append(row.get('iv_percentile', 50) / 100.0)
+        features.append(row.get('iv_current', 0.25))  # Current IV
+        features.append(row.get('iv_historical', 0.25))  # Historical IV
         
-        # Position state
-        features.append(float(self.position))  # -1, 0, or 1
-        features.append(self._calculate_pnl(row.get('close', 0)) if self.position != 0 else 0.0)  # Current P&L
+        # === Volume features (5) ===
+        features.append(row.get('volume_ratio', 1.0))  # Volume vs average
+        features.append(row.get('obv_slope', 0))  # OBV slope
+        features.append(row.get('volume_ma_ratio', 1.0))  # Volume MA ratio
+        features.append(row.get('volume_trend', 0))  # Volume trend
+        features.append(row.get('relative_volume', 1.0))  # Relative volume
         
-        # Ensure we have exactly state_dim features
+        # === Momentum features (5) ===
+        features.append(row.get('roc_5', 0) / 10.0)  # Rate of change 5
+        features.append(row.get('roc_10', 0) / 10.0)  # Rate of change 10
+        features.append(row.get('momentum', 0) / close if close > 0 else 0)  # Momentum
+        features.append(row.get('cci', 0) / 200.0)  # CCI normalized
+        features.append(row.get('williams_r', -50) / 100.0)  # Williams %R
+        
+        # === Historical returns (5) ===
+        if self.current_step >= 5:
+            for i in range(1, 6):
+                if self.current_step - i >= 0:
+                    past_close = self.data.iloc[self.current_step - i].get('close', close)
+                    ret = (close - past_close) / past_close if past_close > 0 else 0
+                    features.append(ret)
+                else:
+                    features.append(0.0)
+        else:
+            features.extend([0.0] * 5)
+        
+        # === Position state (5) ===
+        features.append(float(self.position))  # Current position (-1, 0, 1)
+        features.append(self._calculate_pnl(close) if self.position != 0 else 0.0)  # Current P&L
+        steps_held = (self.current_step - self.position_entry_step) if self.position != 0 else 0
+        features.append(steps_held / 100.0)  # Normalized steps held
+        features.append(self.total_pnl / self.initial_balance if self.initial_balance > 0 else 0)  # Total P&L ratio
+        features.append(self.balance / self.initial_balance if self.initial_balance > 0 else 1.0)  # Balance ratio
+        
+        # Ensure we have exactly state_dim (48) features
         while len(features) < self.state_dim:
             features.append(0.0)
         
@@ -377,4 +426,3 @@ class TradingEnvironment(gym.Env):
         if mode == 'human':
             print(f"Step: {self.current_step}, Balance: ${self.balance:.2f}, "
                   f"Position: {self.position}, P&L: ${self.total_pnl:.2f}")
-

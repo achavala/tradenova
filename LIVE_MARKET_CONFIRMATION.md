@@ -128,3 +128,6 @@ tail -f logs/tradenova_daily.log | grep -E "TRADING CYCLE|_scan_and_trade|Signal
 
 **✅ The system is confirmed working on the live market with real data from Massive!**
 
+
+
+

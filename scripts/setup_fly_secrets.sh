@@ -54,3 +54,6 @@ echo "=========================================="
 echo ""
 echo "Verify with: fly secrets list --app tradenova"
 
+
+
+

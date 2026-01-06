@@ -195,3 +195,6 @@ To verify the system is only trading options:
 - Close old stock positions if desired
 - Monitor new trades to verify they're options only
 
+
+
+

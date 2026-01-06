@@ -259,3 +259,6 @@ if __name__ == "__main__":
     results = validate_dec17_opportunities()
     sys.exit(0)
 
+
+
+

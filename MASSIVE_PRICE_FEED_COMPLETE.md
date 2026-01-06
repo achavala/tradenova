@@ -191,3 +191,6 @@ trader = IntegratedTrader(dry_run=True)
 
 **The system now uses Massive for price data, eliminating insufficient data issues!**
 
+
+
+

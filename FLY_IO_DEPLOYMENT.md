@@ -305,3 +305,6 @@ You can configure auto-scaling in `fly.toml` to reduce costs after market hours,
 **Deployment Date**: December 15, 2025  
 **Status**: Ready for automatic trading starting tomorrow at market open
 
+
+
+

@@ -211,3 +211,6 @@ TICKERS: List[str] = [
 
 **The algorithm did not pick up these opportunities, but the data shows prices were below entry levels on Dec 17, suggesting the algorithm may have been correctly conservative.**
 
+
+
+

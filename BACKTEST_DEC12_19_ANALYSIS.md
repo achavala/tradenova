@@ -338,3 +338,6 @@ The system is **very active** - generating signals for all 12 tickers every day.
 
 **Backtest Complete - System is generating signals correctly! ✅**
 
+
+
+

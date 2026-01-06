@@ -309,3 +309,6 @@ IV Percentile = (Days with lower IV) / (Total days) * 100
 
 **Ready for daily collection to build IV history!**
 
+
+
+

@@ -169,3 +169,6 @@ Mode: Backtesting mode (separate from live/paper)
 
 **Confirmed: Paper trading uses LIVE market data but SIMULATED money.**
 
+
+
+

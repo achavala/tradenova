@@ -291,3 +291,6 @@ Trade Allowed / Blocked / Forced Reduction
 
 All four layers working together to protect capital.
 
+
+
+

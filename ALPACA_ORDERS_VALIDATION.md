@@ -134,3 +134,6 @@ tail -f logs/trading_today.log
 **Action**: Restart trading system with proper environment
 
 
+
+
+

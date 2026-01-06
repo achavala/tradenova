@@ -120,3 +120,6 @@ Monitor logs for:
 
 **Fix applied - now using actual option symbols from Alpaca/Massive!**
 
+
+
+

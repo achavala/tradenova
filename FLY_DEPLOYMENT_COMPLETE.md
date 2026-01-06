@@ -186,3 +186,6 @@ flyctl logs --app tradenova | grep "Starting scheduler"
 
 **Status:** ✅ All fixes deployed. Dashboard working. Auto-trading enabled.
 
+
+
+

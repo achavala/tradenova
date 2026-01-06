@@ -1,7 +1,7 @@
 #!/bin/bash
 # Run TradeNova Dashboard with custom port
 # Usage: ./run_dashboard.sh [port]
-# Default port: 8502 (to avoid conflict with other apps on 8501)
+# Default port: 8503 (to avoid conflict with other apps on 8501/8502)
 
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -15,7 +15,7 @@ else
     echo "⚠️  Warning: venv directory not found"
 fi
 
-PORT=${1:-8502}
+PORT=${1:-8503}
 
 echo "=========================================="
 echo "Starting TradeNova Dashboard"

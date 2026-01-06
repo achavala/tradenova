@@ -232,3 +232,6 @@ fly machine restart <machine-id>
 
 **Your system will trade automatically starting tomorrow at market open!** 🚀
 
+
+
+

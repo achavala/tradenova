@@ -102,3 +102,6 @@ fly logs --app tradenova
 
 **That's it! Your system will trade automatically starting tomorrow at market open.**
 
+
+
+

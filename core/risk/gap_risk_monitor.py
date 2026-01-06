@@ -202,7 +202,14 @@ class GapRiskMonitor:
         self,
         current_date: date
     ) -> Optional[Tuple[GapRiskLevel, str, Dict]]:
-        """Check macro event risk"""
+        """Check macro event risk with time-based blocking"""
+        import pytz
+        from datetime import datetime, time as dt_time
+        
+        ET = pytz.timezone('America/New_York')
+        now_et = datetime.now(ET)
+        current_time = now_et.time()
+        
         relevant_events = []
         
         for event in self.macro_events:
@@ -223,6 +230,29 @@ class GapRiskMonitor:
         high_events = ['FED_SPEAKER', 'ECB', 'BOJ']
         
         event_types = [e['event']['type'] for e in relevant_events]
+        today_events = [e for e in relevant_events if e['days_away'] == 0]
+        
+        # Time-based blocking for same-day events
+        # NFP/CPI: Released at 8:30 AM ET, volatile until ~10:30 AM
+        # FOMC: Released at 2:00 PM ET, volatile until ~3:30 PM
+        block_trades = False
+        
+        for event in today_events:
+            event_type = event['event']['type']
+            if event_type in ['NFP', 'CPI']:
+                # Block from 8:00 AM to 10:30 AM ET
+                volatile_start = dt_time(8, 0)
+                volatile_end = dt_time(10, 30)
+                if volatile_start <= current_time <= volatile_end:
+                    block_trades = True
+                    logger.info(f"Blocking trades: {event_type} volatile window {volatile_start}-{volatile_end} ET (current: {current_time})")
+            elif event_type == 'FOMC':
+                # Block from 1:30 PM to 3:30 PM ET
+                volatile_start = dt_time(13, 30)
+                volatile_end = dt_time(15, 30)
+                if volatile_start <= current_time <= volatile_end:
+                    block_trades = True
+                    logger.info(f"Blocking trades: {event_type} volatile window {volatile_start}-{volatile_end} ET (current: {current_time})")
         
         if any(et in critical_events for et in event_types):
             risk_level = GapRiskLevel.HIGH
@@ -234,13 +264,17 @@ class GapRiskMonitor:
             risk_level = GapRiskLevel.MEDIUM
             reason = f"Macro event: {', '.join(event_types)}"
         
+        # Only block during volatile time windows, not all day
+        if not block_trades and today_events:
+            logger.info(f"Outside volatile window for {event_types} - trading allowed with reduced size")
+        
         return (
             risk_level,
             reason,
             {
                 'macro_events': relevant_events,
                 'position_size_multiplier': 0.5 if risk_level == GapRiskLevel.HIGH else 0.8,
-                'block_new_trades': risk_level == GapRiskLevel.HIGH,
+                'block_new_trades': block_trades,  # Only block during volatile windows
                 'force_exit': False
             }
         )
@@ -335,4 +369,7 @@ class GapRiskMonitor:
             }
         
         return risks
+
+
+
 

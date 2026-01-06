@@ -6,8 +6,12 @@ import logging
 from typing import Dict, List, Set, Optional
 from datetime import datetime, time
 import re
+import pytz
 
 logger = logging.getLogger(__name__)
+
+# Market timezone (Eastern Time)
+ET = pytz.timezone('America/New_York')
 
 class NewsFilter:
     """Filters trading during news events"""
@@ -66,13 +70,14 @@ class NewsFilter:
         Check if trading should be blocked
         
         Args:
-            current_time: Current time (default: now)
+            current_time: Current time (default: now in ET)
             
         Returns:
             (is_blocked, reason)
         """
         if current_time is None:
-            current_time = datetime.now()
+            # Use Eastern Time for market-related checks
+            current_time = datetime.now(ET)
         
         # Check FOMC meetings
         if self.block_fomc:

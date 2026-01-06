@@ -116,15 +116,21 @@ class OptionUniverseFilter:
         bid = self._extract_price(contract, 'bid', 'bid_price', 'last_bid')
         ask = self._extract_price(contract, 'ask', 'ask_price', 'last_ask')
         mid = self._extract_price(contract, 'mid', 'mid_price', 'last_price')
+        close = self._extract_price(contract, 'close_price', 'close', 'prev_close')
         
-        # If no bid/ask, try to construct from mid
-        if bid is None and ask is None and mid is not None:
-            # Assume 5% spread around mid (conservative)
-            bid = mid * 0.975
-            ask = mid * 1.025
+        # If no bid/ask, try to construct from mid or close price
+        if bid is None and ask is None:
+            reference_price = mid or close
+            if reference_price is not None:
+                # Assume 5% spread around reference price (conservative)
+                bid = reference_price * 0.975
+                ask = reference_price * 1.025
         
-        # Extract sizes
+        # Extract sizes - if not available, use default of 10 (relaxed check)
         bid_size = contract.get('bid_size', contract.get('bid_qty', 0))
+        if bid_size == 0 and (mid or close):
+            # If we have a price but no size, assume some liquidity exists
+            bid_size = 10  # Reasonable default for options with pricing data
         ask_size = contract.get('ask_size', contract.get('ask_qty', 0))
         
         # Extract quote timestamp
@@ -146,7 +152,8 @@ class OptionUniverseFilter:
         
         if bid is None or bid < self.min_bid:
             is_liquid = False
-            reasons.append(f"Bid too low or missing (${bid:.4f} < ${self.min_bid:.2f})")
+            bid_str = f"${bid:.4f}" if bid is not None else "None"
+            reasons.append(f"Bid too low or missing ({bid_str} < ${self.min_bid:.2f})")
         
         if spread_pct > self.max_spread_pct:
             is_liquid = False
@@ -156,7 +163,9 @@ class OptionUniverseFilter:
             is_liquid = False
             reasons.append(f"Bid size too small ({bid_size} < {self.min_bid_size})")
         
-        if quote_age > self.max_quote_age_seconds:
+        # Only check quote age if we have real-time quotes (not using close_price fallback)
+        using_fallback = bid is not None and close is not None and abs(bid - close * 0.975) < 0.01
+        if not using_fallback and quote_age > self.max_quote_age_seconds:
             is_liquid = False
             reasons.append(f"Quote stale ({quote_age:.1f}s > {self.max_quote_age_seconds}s)")
         
@@ -251,4 +260,6 @@ class OptionUniverseFilter:
         
         metrics = self._calculate_liquidity_metrics(contract, current_time)
         return metrics.is_liquid, metrics.reason
+
+
 

@@ -248,3 +248,6 @@ If you need to rollback to Railway:
 **Migration Date**: December 15, 2025  
 **Status**: Ready for automatic trading on Fly.io
 
+
+
+

@@ -248,3 +248,6 @@ POLYGON_API_KEY=your_key_here
 
 Once API key is configured, Polygon integration is fully functional!
 
+
+
+

@@ -201,6 +201,18 @@ class IntegratedTrader:
             self._monitor_positions()
             logger.info(f"Current positions: {len(self.positions)}")
             
+            # CHECK STOP-LOSSES (CRITICAL RISK MANAGEMENT)
+            self._check_stop_losses()
+            
+            # CHECK PROFIT TARGETS (queries Alpaca directly)
+            self._check_profit_targets()
+            
+            # Log portfolio heat status
+            options_exposure = self._get_total_options_exposure()
+            heat_pct = options_exposure / float(account['equity']) * 100 if float(account['equity']) > 0 else 0
+            max_heat = getattr(Config, 'MAX_PORTFOLIO_HEAT', 0.35) * 100
+            logger.info(f"Portfolio Heat: ${options_exposure:,.2f} ({heat_pct:.1f}% / {max_heat:.0f}% max)")
+            
             # Scan for new opportunities
             if len(self.positions) < Config.MAX_ACTIVE_TRADES:
                 logger.info(f"Position limit check: {len(self.positions)} < {Config.MAX_ACTIVE_TRADES} - Calling _scan_and_trade()")
@@ -534,24 +546,56 @@ class IntegratedTrader:
                 logger.warning(f"No expiration dates found for {symbol}")
                 return
             
-            # Select expiration (0-30 DTE)
+            # Select expiration with INTELLIGENT DTE selection
             from datetime import datetime, timedelta
             today = datetime.now().date()
             target_expiration = None
+            
+            # Get signal confidence
+            signal_confidence = signal.get('confidence', 0)
+            
+            # Determine DTE range based on confidence
+            # High confidence (>=90%) = allow short-term 0-6 DTE
+            # Normal confidence (<90%) = safer 7-14 DTE range
+            short_term_threshold = getattr(Config, 'SHORT_TERM_CONFIDENCE_THRESHOLD', 0.90)
+            
+            if signal_confidence >= short_term_threshold:
+                # High confidence: allow short-term options (0-6 DTE)
+                min_dte = getattr(Config, 'MIN_DTE_SHORT_TERM', 0)
+                max_dte = getattr(Config, 'MAX_DTE_SHORT_TERM', 6)
+                logger.info(f"High confidence signal ({signal_confidence:.0%}) → Short-term DTE allowed: {min_dte}-{max_dte}")
+            else:
+                # Normal confidence: use safer 7-14 DTE range
+                min_dte = Config.MIN_DTE  # 7
+                max_dte = Config.MAX_DTE  # 14
+                logger.info(f"Standard confidence signal ({signal_confidence:.0%}) → Standard DTE: {min_dte}-{max_dte}")
             
             for exp_date in sorted(expirations):
                 if isinstance(exp_date, str):
                     exp_date = datetime.strptime(exp_date, '%Y-%m-%d').date()
                 dte = (exp_date - today).days
-                if Config.MIN_DTE <= dte <= Config.MAX_DTE:
+                if min_dte <= dte <= max_dte:
                     target_expiration = exp_date
                     break
             
             if not target_expiration:
-                logger.warning(f"No expiration found for {symbol} in {Config.MIN_DTE}-{Config.MAX_DTE} DTE range")
-                return
+                # Fallback: try standard range if short-term not available
+                if signal_confidence >= short_term_threshold:
+                    logger.info(f"No short-term options available, trying standard DTE range...")
+                    for exp_date in sorted(expirations):
+                        if isinstance(exp_date, str):
+                            exp_date = datetime.strptime(exp_date, '%Y-%m-%d').date()
+                        dte = (exp_date - today).days
+                        if Config.MIN_DTE <= dte <= Config.MAX_DTE:
+                            target_expiration = exp_date
+                            break
+                
+                if not target_expiration:
+                    logger.warning(f"No expiration found for {symbol} in {min_dte}-{max_dte} DTE range")
+                    return
             
-            logger.info(f"Selected expiration for {symbol}: {target_expiration} (DTE: {(target_expiration - today).days})")
+            selected_dte = (target_expiration - today).days
+            logger.info(f"Selected expiration for {symbol}: {target_expiration} (DTE: {selected_dte})")
             
             # Phase-0: Get options chain FIRST, then filter for liquidity
             # This ensures we only consider tradable options BEFORE selecting ATM
@@ -700,21 +744,38 @@ class IntegratedTrader:
             
             logger.info(f"Option price for {option_symbol}: ${option_price:.2f} (source: {quote_source})")
             
-            # Calculate position size (in contracts, not shares)
+            # Calculate position size with STRICT risk management
             account = self.client.get_account()
             balance = float(account['equity'])
-            position_size_pct = Config.POSITION_SIZE_PCT
             
-            # For options, use higher position size (options are more capital efficient)
-            # Options allow leverage, so we can allocate more per trade
-            options_position_pct = min(position_size_pct * 1.5, 0.75)  # Up to 75% per options trade
+            # RISK CHECK 1: Portfolio Heat Cap (max total options exposure)
+            current_options_exposure = self._get_total_options_exposure()
+            max_heat = getattr(Config, 'MAX_PORTFOLIO_HEAT', 0.35)  # Default 35%
             
-            # Position capital per trade (higher for options)
-            position_capital = balance * options_position_pct / Config.MAX_ACTIVE_TRADES
+            if current_options_exposure >= balance * max_heat:
+                logger.warning(f"🔴 PORTFOLIO HEAT CAP REACHED: Current options exposure ${current_options_exposure:,.2f} >= {max_heat*100:.0f}% of ${balance:,.2f}")
+                logger.warning(f"   Skipping {symbol} trade to protect portfolio")
+                return
+            
+            # RISK CHECK 2: Max position size = 10% of portfolio (hard cap)
+            max_position_pct = getattr(Config, 'MAX_POSITION_PCT', 0.10)  # Hard cap: 10%
+            position_capital = balance * max_position_pct
+            
+            # Further reduce if we're approaching heat cap
+            remaining_heat_room = (balance * max_heat) - current_options_exposure
+            position_capital = min(position_capital, remaining_heat_room)
+            
+            logger.info(f"Risk checks passed: Heat={current_options_exposure/balance*100:.1f}%/{max_heat*100:.0f}%, Position cap=${position_capital:,.2f}")
             
             # Calculate number of contracts (each contract = 100 shares)
             contract_cost = option_price * 100
             contracts = int(position_capital / contract_cost)
+            
+            # HARD CAP: Maximum 10 contracts per trade
+            MAX_CONTRACTS_PER_TRADE = getattr(Config, 'MAX_CONTRACTS_PER_TRADE', 10)
+            if contracts > MAX_CONTRACTS_PER_TRADE:
+                logger.info(f"Capping contracts from {contracts} to {MAX_CONTRACTS_PER_TRADE} (max per trade)")
+                contracts = MAX_CONTRACTS_PER_TRADE
             
             if contracts < 1:
                 logger.warning(f"⚠️  Position size too small for {symbol}: ${position_capital:.2f} < ${contract_cost:.2f} (1 contract)")
@@ -783,6 +844,8 @@ class IntegratedTrader:
                         if otm_price and otm_price > 0:
                             otm_contract_cost = otm_price * 100
                             otm_contracts = int(position_capital / otm_contract_cost)
+                            # Apply max contracts cap
+                            otm_contracts = min(otm_contracts, MAX_CONTRACTS_PER_TRADE)
                             if otm_contracts >= 1:
                                 logger.info(f"✅ Found affordable OTM option: ${otm_price:.2f} (${otm_contract_cost:.2f}/contract, {otm_contracts} contracts)")
                                 option_price = otm_price
@@ -874,6 +937,138 @@ class IntegratedTrader:
                 
         except Exception as e:
             logger.error(f"Error executing options trade for {symbol}: {e}", exc_info=True)
+    
+    def _get_total_options_exposure(self) -> float:
+        """Calculate total options exposure (cost basis of all option positions)"""
+        try:
+            positions = self.client.get_positions()
+            total_exposure = 0.0
+            
+            for pos in positions:
+                # Options symbols are longer than stock symbols
+                if len(pos.get('symbol', '')) > 10:
+                    cost_basis = float(pos.get('cost_basis', 0))
+                    total_exposure += cost_basis
+            
+            return total_exposure
+        except Exception as e:
+            logger.error(f"Error calculating options exposure: {e}")
+            return 0.0
+    
+    def _check_stop_losses(self):
+        """Check all positions for stop-loss triggers and close if needed"""
+        try:
+            positions = self.client.get_positions()
+            stop_loss_pct = getattr(Config, 'STOP_LOSS_PCT', 0.20)  # 20% default
+            
+            for pos in positions:
+                symbol = pos.get('symbol', '')
+                unrealized_plpc = float(pos.get('unrealized_plpc', 0))
+                unrealized_pl = float(pos.get('unrealized_pl', 0))
+                
+                # Check if loss exceeds stop-loss threshold
+                if unrealized_plpc <= -stop_loss_pct:
+                    logger.warning(f"🔴 STOP-LOSS TRIGGERED for {symbol}:")
+                    logger.warning(f"   Loss: ${unrealized_pl:.2f} ({unrealized_plpc*100:.1f}%)")
+                    logger.warning(f"   Threshold: -{stop_loss_pct*100:.0f}%")
+                    
+                    # Close the position
+                    try:
+                        qty = int(float(pos.get('qty', 0)))
+                        if qty > 0:
+                            # Place sell order using existing client
+                            from core.live.options_broker_client import OptionsBrokerClient
+                            options_client = OptionsBrokerClient(self.client)  # FIXED: Pass AlpacaClient instance
+                            result = options_client.place_option_order(
+                                option_symbol=symbol,
+                                qty=qty,
+                                side='sell',
+                                order_type='market'
+                            )
+                            if result:
+                                logger.info(f"✅ STOP-LOSS EXECUTED: Sold {qty} {symbol}")
+                                # Remove from positions tracking
+                                if symbol in self.positions:
+                                    del self.positions[symbol]
+                            else:
+                                logger.error(f"❌ Failed to execute stop-loss for {symbol}")
+                    except Exception as e:
+                        logger.error(f"Error executing stop-loss for {symbol}: {e}", exc_info=True)
+                
+                # Also warn about positions approaching stop-loss
+                elif unrealized_plpc <= -(stop_loss_pct * 0.75):  # Warn at 75% of stop-loss
+                    logger.warning(f"⚠️  {symbol} approaching stop-loss: {unrealized_plpc*100:.1f}% (trigger at -{stop_loss_pct*100:.0f}%)")
+        
+        except Exception as e:
+            logger.error(f"Error checking stop-losses: {e}")
+    
+    def _check_profit_targets(self):
+        """Check all positions for profit-taking opportunities (queries Alpaca directly)"""
+        try:
+            positions = self.client.get_positions()
+            
+            # Profit target levels from config
+            tp1_pct = getattr(Config, 'TP1_PCT', 0.40)  # 40%
+            tp2_pct = getattr(Config, 'TP2_PCT', 0.60)  # 60%
+            tp3_pct = getattr(Config, 'TP3_PCT', 1.00)  # 100%
+            
+            # Exit percentages
+            tp1_exit = getattr(Config, 'TP1_EXIT_PCT', 0.50)  # 50%
+            tp2_exit = getattr(Config, 'TP2_EXIT_PCT', 0.20)  # 20%
+            tp3_exit = getattr(Config, 'TP3_EXIT_PCT', 0.10)  # 10%
+            
+            for pos in positions:
+                symbol = pos.get('symbol', '')
+                unrealized_plpc = float(pos.get('unrealized_plpc', 0))
+                unrealized_pl = float(pos.get('unrealized_pl', 0))
+                qty = int(float(pos.get('qty', 0)))
+                
+                # Skip if not in profit or qty too low
+                if unrealized_plpc <= 0 or qty <= 0:
+                    continue
+                
+                # Determine which TP level and exit qty
+                exit_qty = 0
+                tp_level = ""
+                
+                if unrealized_plpc >= tp3_pct:  # 100%+
+                    exit_qty = max(1, int(qty * tp3_exit))
+                    tp_level = "TP3 (100%+)"
+                elif unrealized_plpc >= tp2_pct:  # 60%+
+                    exit_qty = max(1, int(qty * tp2_exit))
+                    tp_level = "TP2 (60%+)"
+                elif unrealized_plpc >= tp1_pct:  # 40%+
+                    exit_qty = max(1, int(qty * tp1_exit))
+                    tp_level = "TP1 (40%+)"
+                
+                if exit_qty > 0:
+                    logger.info(f"🎯 PROFIT TARGET HIT for {symbol}:")
+                    logger.info(f"   Profit: ${unrealized_pl:.2f} ({unrealized_plpc*100:.1f}%)")
+                    logger.info(f"   Level: {tp_level}")
+                    logger.info(f"   Exiting: {exit_qty} of {qty} contracts")
+                    
+                    try:
+                        from core.live.options_broker_client import OptionsBrokerClient
+                        options_client = OptionsBrokerClient(self.client)
+                        result = options_client.place_option_order(
+                            option_symbol=symbol,
+                            qty=exit_qty,
+                            side='sell',
+                            order_type='market'
+                        )
+                        if result:
+                            logger.info(f"✅ PROFIT TAKEN: Sold {exit_qty} {symbol} @ {tp_level}")
+                        else:
+                            logger.error(f"❌ Failed to take profit for {symbol}")
+                    except Exception as e:
+                        logger.error(f"Error taking profit for {symbol}: {e}", exc_info=True)
+                
+                # Log positions approaching profit targets
+                elif unrealized_plpc >= (tp1_pct * 0.80):  # 80% of TP1
+                    logger.info(f"📈 {symbol} approaching TP1: {unrealized_plpc*100:.1f}% (trigger at {tp1_pct*100:.0f}%)")
+        
+        except Exception as e:
+            logger.error(f"Error checking profit targets: {e}")
     
     def _log_status(self):
         """Log current status"""
