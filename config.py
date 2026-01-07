@@ -55,9 +55,13 @@ class Config:
     
     # Tickers (SPY excluded - user requirement)
     TICKERS: List[str] = [
+        # Big Tech & Semis
         'NVDA', 'AAPL', 'TSLA', 'META', 'GOOG', 
-        'MSFT', 'AMZN', 'MSTR', 'AVGO', 'PLTR', 
-        'AMD', 'INTC'
+        'MSFT', 'AMZN', 'AVGO', 'AMD', 'INTC', 'MU',
+        # High Growth / Volatile
+        'MSTR', 'PLTR', 'SMCI', 'HOOD', 'COIN',
+        # Emerging / Speculative
+        'RKLB', 'OKLO', 'PATH', 'NBIS', 'IREN'
     ]
     
     # Options Trading Parameters
