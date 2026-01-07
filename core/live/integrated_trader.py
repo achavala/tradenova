@@ -108,6 +108,9 @@ class IntegratedTrader:
         self.profit_manager = ProfitManager()
         self.metrics_tracker = MetricsTracker()
         
+        # Track peak P&L for trailing stops (symbol -> peak_pnl_pct)
+        self.peak_pnl_tracker: Dict[str, float] = {}
+        
         # RL predictor (optional - requires PyTorch which may not be available)
         self.rl_predictor = None
         self.use_rl = use_rl and RL_AVAILABLE
@@ -206,6 +209,9 @@ class IntegratedTrader:
             
             # CHECK PROFIT TARGETS (queries Alpaca directly)
             self._check_profit_targets()
+            
+            # CHECK TRAILING STOPS (dynamic pullback based on peak P&L)
+            self._check_trailing_stops()
             
             # Log portfolio heat status
             options_exposure = self._get_total_options_exposure()
@@ -1069,6 +1075,94 @@ class IntegratedTrader:
         
         except Exception as e:
             logger.error(f"Error checking profit targets: {e}")
+    
+    def _check_trailing_stops(self):
+        """
+        Check dynamic trailing stops based on peak P&L.
+        Tiered pullback allowances:
+        - Peak P&L > 100% → Allow 10% pullback
+        - Peak P&L > 80%  → Allow 12% pullback
+        - Peak P&L > 60%  → Allow 15% pullback
+        - Peak P&L > 40%  → Allow 18% pullback
+        """
+        try:
+            positions = self.client.get_positions()
+            
+            # Get trailing stop tiers from config
+            trailing_tiers = getattr(Config, 'TRAILING_STOP_TIERS', [
+                (1.00, 0.10),  # Peak > 100% → 10% pullback
+                (0.80, 0.12),  # Peak > 80% → 12% pullback
+                (0.60, 0.15),  # Peak > 60% → 15% pullback
+                (0.40, 0.18),  # Peak > 40% → 18% pullback
+            ])
+            activation_pct = getattr(Config, 'TRAILING_STOP_ACTIVATION_PCT', 0.40)
+            
+            for pos in positions:
+                symbol = pos.get('symbol', '')
+                unrealized_plpc = float(pos.get('unrealized_plpc', 0))
+                unrealized_pl = float(pos.get('unrealized_pl', 0))
+                qty = int(float(pos.get('qty', 0)))
+                
+                if qty <= 0:
+                    continue
+                
+                # Update peak P&L tracker
+                current_peak = self.peak_pnl_tracker.get(symbol, 0)
+                if unrealized_plpc > current_peak:
+                    self.peak_pnl_tracker[symbol] = unrealized_plpc
+                    current_peak = unrealized_plpc
+                    logger.debug(f"📊 {symbol} new peak P&L: {current_peak*100:.1f}%")
+                
+                # Skip if never reached activation threshold
+                if current_peak < activation_pct:
+                    continue
+                
+                # Determine allowed pullback based on peak
+                allowed_pullback = 0.18  # Default 18%
+                for tier_pct, pullback_pct in trailing_tiers:
+                    if current_peak >= tier_pct:
+                        allowed_pullback = pullback_pct
+                        break
+                
+                # Calculate trailing stop level
+                trailing_stop_level = current_peak - allowed_pullback
+                
+                # Check if current P&L fell below trailing stop
+                if unrealized_plpc < trailing_stop_level:
+                    logger.warning(f"🔔 TRAILING STOP TRIGGERED for {symbol}:")
+                    logger.warning(f"   Peak P&L: {current_peak*100:.1f}%")
+                    logger.warning(f"   Current P&L: {unrealized_plpc*100:.1f}%")
+                    logger.warning(f"   Allowed pullback: {allowed_pullback*100:.0f}%")
+                    logger.warning(f"   Trailing stop: {trailing_stop_level*100:.1f}%")
+                    
+                    # Close the position
+                    try:
+                        from core.live.options_broker_client import OptionsBrokerClient
+                        options_client = OptionsBrokerClient(self.client)
+                        result = options_client.place_option_order(
+                            option_symbol=symbol,
+                            qty=qty,
+                            side='sell',
+                            order_type='market'
+                        )
+                        if result:
+                            logger.info(f"✅ TRAILING STOP EXECUTED: Sold {qty} {symbol}")
+                            logger.info(f"   Locked in: {unrealized_plpc*100:.1f}% profit (was {current_peak*100:.1f}% peak)")
+                            # Remove from peak tracker
+                            if symbol in self.peak_pnl_tracker:
+                                del self.peak_pnl_tracker[symbol]
+                        else:
+                            logger.error(f"❌ Failed to execute trailing stop for {symbol}")
+                    except Exception as e:
+                        logger.error(f"Error executing trailing stop for {symbol}: {e}", exc_info=True)
+                
+                # Log positions approaching trailing stop
+                elif unrealized_plpc < (trailing_stop_level + 0.05) and current_peak >= activation_pct:
+                    logger.info(f"⚠️  {symbol} approaching trailing stop:")
+                    logger.info(f"   Current: {unrealized_plpc*100:.1f}%, Peak: {current_peak*100:.1f}%, Trail: {trailing_stop_level*100:.1f}%")
+        
+        except Exception as e:
+            logger.error(f"Error checking trailing stops: {e}")
     
     def _log_status(self):
         """Log current status"""

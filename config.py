@@ -47,11 +47,21 @@ class Config:
     TP4_PCT = float(os.getenv('TP4_PCT', '1.50'))
     TP4_EXIT_PCT = float(os.getenv('TP4_EXIT_PCT', '0.10'))
     TP5_PCT = float(os.getenv('TP5_PCT', '2.00'))
-    TP5_EXIT_PCT = float(os.getenv('TP5_EXIT_PCT', '1.00'))
+    TP5_EXIT_PCT = float(os.getenv('TP5_EXIT_PCT', '0.10'))  # Exit 10% at +200% (changed from 100%)
     
-    # Trailing Stop
-    TRAILING_STOP_ACTIVATION_PCT = float(os.getenv('TRAILING_STOP_ACTIVATION_PCT', '1.50'))
-    TRAILING_STOP_MIN_PROFIT_PCT = float(os.getenv('TRAILING_STOP_MIN_PROFIT_PCT', '1.00'))
+    # Dynamic Trailing Stop (tiered pullback based on peak P&L)
+    # Peak P&L > 100% → Allow 10% pullback (tight protection)
+    # Peak P&L > 80%  → Allow 12% pullback
+    # Peak P&L > 60%  → Allow 15% pullback
+    # Peak P&L > 40%  → Allow 18% pullback (standard)
+    TRAILING_STOP_TIERS = [
+        (1.00, 0.10),  # Peak > 100% → 10% pullback allowed
+        (0.80, 0.12),  # Peak > 80% → 12% pullback allowed
+        (0.60, 0.15),  # Peak > 60% → 15% pullback allowed
+        (0.40, 0.18),  # Peak > 40% → 18% pullback allowed
+    ]
+    TRAILING_STOP_ACTIVATION_PCT = float(os.getenv('TRAILING_STOP_ACTIVATION_PCT', '0.40'))  # Activate at +40%
+    TRAILING_STOP_MIN_PROFIT_PCT = float(os.getenv('TRAILING_STOP_MIN_PROFIT_PCT', '0.20'))  # Minimum +20% profit lock
     
     # Tickers (SPY excluded - user requirement)
     TICKERS: List[str] = [
