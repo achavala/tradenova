@@ -133,128 +133,128 @@ else:
     st.subheader("✅ Closed Trades")
     
     if len(closed_trades) > 0:
-        # Filters
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
+    # Filters
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
             symbols = ['All'] + sorted(closed_trades['symbol'].unique().tolist()) if 'symbol' in closed_trades.columns else ['All']
-            selected_symbol = st.selectbox("Filter by Symbol", symbols)
-        
-        with col2:
+        selected_symbol = st.selectbox("Filter by Symbol", symbols)
+    
+    with col2:
             if 'agent' in closed_trades.columns:
                 agents = ['All'] + sorted(closed_trades['agent'].dropna().unique().tolist())
-                selected_agent = st.selectbox("Filter by Agent", agents)
-            else:
-                selected_agent = 'All'
-        
-        with col3:
+            selected_agent = st.selectbox("Filter by Agent", agents)
+        else:
+            selected_agent = 'All'
+    
+    with col3:
             if 'pnl' in closed_trades.columns:
-                pnl_filter = st.selectbox("Filter by P&L", ['All', 'Winners', 'Losers'])
-            else:
-                pnl_filter = 'All'
-        
-        # Apply filters
+            pnl_filter = st.selectbox("Filter by P&L", ['All', 'Winners', 'Losers'])
+        else:
+            pnl_filter = 'All'
+    
+    # Apply filters
         filtered_df = closed_trades.copy()
-        
-        if selected_symbol != 'All' and 'symbol' in filtered_df.columns:
-            filtered_df = filtered_df[filtered_df['symbol'] == selected_symbol]
-        
-        if selected_agent != 'All' and 'agent' in filtered_df.columns:
-            filtered_df = filtered_df[filtered_df['agent'] == selected_agent]
-        
-        if pnl_filter == 'Winners' and 'pnl' in filtered_df.columns:
-            filtered_df = filtered_df[filtered_df['pnl'] > 0]
-        elif pnl_filter == 'Losers' and 'pnl' in filtered_df.columns:
-            filtered_df = filtered_df[filtered_df['pnl'] <= 0]
-        
+    
+    if selected_symbol != 'All' and 'symbol' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['symbol'] == selected_symbol]
+    
+    if selected_agent != 'All' and 'agent' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['agent'] == selected_agent]
+    
+    if pnl_filter == 'Winners' and 'pnl' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['pnl'] > 0]
+    elif pnl_filter == 'Losers' and 'pnl' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['pnl'] <= 0]
+    
         st.markdown(f"**Showing {len(filtered_df)} closed trades**")
-        
+    
         if len(filtered_df) > 0:
-            # Prepare display columns
-            display_columns = []
-            if 'entry_time' in filtered_df.columns:
-                display_columns.append('entry_time')
-            if 'symbol' in filtered_df.columns:
-                display_columns.append('symbol')
+    # Prepare display columns
+    display_columns = []
+    if 'entry_time' in filtered_df.columns:
+        display_columns.append('entry_time')
+    if 'symbol' in filtered_df.columns:
+        display_columns.append('symbol')
             if 'qty' in filtered_df.columns:
                 display_columns.append('qty')
-            if 'entry_price' in filtered_df.columns:
-                display_columns.append('entry_price')
-            if 'exit_price' in filtered_df.columns:
-                display_columns.append('exit_price')
-            if 'exit_time' in filtered_df.columns:
-                display_columns.append('exit_time')
-            if 'pnl' in filtered_df.columns:
-                display_columns.append('pnl')
-            if 'pnl_pct' in filtered_df.columns:
-                display_columns.append('pnl_pct')
-            
-            if display_columns:
-                display_df = filtered_df[display_columns].copy()
-                
-                # Format columns for display
-                if 'entry_time' in display_df.columns:
-                    display_df['entry_time'] = display_df['entry_time'].dt.strftime('%Y-%m-%d %H:%M')
-                if 'exit_time' in display_df.columns:
+    if 'entry_price' in filtered_df.columns:
+        display_columns.append('entry_price')
+    if 'exit_price' in filtered_df.columns:
+        display_columns.append('exit_price')
+    if 'exit_time' in filtered_df.columns:
+        display_columns.append('exit_time')
+    if 'pnl' in filtered_df.columns:
+        display_columns.append('pnl')
+    if 'pnl_pct' in filtered_df.columns:
+        display_columns.append('pnl_pct')
+    
+    if display_columns:
+        display_df = filtered_df[display_columns].copy()
+        
+        # Format columns for display
+        if 'entry_time' in display_df.columns:
+            display_df['entry_time'] = display_df['entry_time'].dt.strftime('%Y-%m-%d %H:%M')
+        if 'exit_time' in display_df.columns:
                     display_df['exit_time'] = pd.to_datetime(display_df['exit_time'], errors='coerce').dt.strftime('%Y-%m-%d %H:%M')
-                if 'entry_price' in display_df.columns:
-                    display_df['entry_price'] = display_df['entry_price'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
-                if 'exit_price' in display_df.columns:
-                    display_df['exit_price'] = display_df['exit_price'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
-                if 'pnl' in display_df.columns:
-                    display_df['pnl'] = display_df['pnl'].apply(lambda x: f"${x:,.2f}" if pd.notna(x) else "$0.00")
-                if 'pnl_pct' in display_df.columns:
-                    display_df['pnl_pct'] = display_df['pnl_pct'].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "0.00%")
+        if 'entry_price' in display_df.columns:
+            display_df['entry_price'] = display_df['entry_price'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
+        if 'exit_price' in display_df.columns:
+            display_df['exit_price'] = display_df['exit_price'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
+        if 'pnl' in display_df.columns:
+            display_df['pnl'] = display_df['pnl'].apply(lambda x: f"${x:,.2f}" if pd.notna(x) else "$0.00")
+        if 'pnl_pct' in display_df.columns:
+            display_df['pnl_pct'] = display_df['pnl_pct'].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "0.00%")
                 if 'qty' in display_df.columns:
                     display_df['qty'] = display_df['qty'].apply(lambda x: f"{int(x)}" if pd.notna(x) else "0")
-                
-                # Rename columns for display
-                column_names = {
-                    'entry_time': 'Entry Time',
-                    'symbol': 'Symbol',
+        
+        # Rename columns for display
+        column_names = {
+            'entry_time': 'Entry Time',
+            'symbol': 'Symbol',
                     'qty': 'Qty',
-                    'entry_price': 'Entry Price',
-                    'exit_price': 'Exit Price',
-                    'exit_time': 'Exit Time',
-                    'pnl': 'P&L',
-                    'pnl_pct': 'P&L %'
-                }
-                display_df = display_df.rename(columns=column_names)
-                
-                # Color code P&L
-                def color_pnl(val):
-                    try:
+            'entry_price': 'Entry Price',
+            'exit_price': 'Exit Price',
+            'exit_time': 'Exit Time',
+            'pnl': 'P&L',
+            'pnl_pct': 'P&L %'
+        }
+        display_df = display_df.rename(columns=column_names)
+        
+        # Color code P&L
+        def color_pnl(val):
+            try:
                         pnl_val = float(val.replace('$', '').replace(',', '').replace('%', ''))
-                        if pnl_val > 0:
-                            return 'background-color: #d4edda; color: #155724;'
-                        elif pnl_val < 0:
-                            return 'background-color: #f8d7da; color: #721c24;'
-                        else:
-                            return ''
-                    except:
-                        return ''
-                
-                # Apply styling
+                if pnl_val > 0:
+                    return 'background-color: #d4edda; color: #155724;'
+                elif pnl_val < 0:
+                    return 'background-color: #f8d7da; color: #721c24;'
+                else:
+                    return ''
+            except:
+                return ''
+        
+        # Apply styling
                 if 'P&L' in display_df.columns:
-                    styled_df = display_df.style.applymap(color_pnl, subset=['P&L'])
+        styled_df = display_df.style.applymap(color_pnl, subset=['P&L'])
                     if 'P&L %' in display_df.columns:
                         styled_df = styled_df.applymap(color_pnl, subset=['P&L %'])
-                    st.dataframe(styled_df, use_container_width=True, hide_index=True)
+        st.dataframe(styled_df, use_container_width=True, hide_index=True)
                 else:
                     st.dataframe(display_df, use_container_width=True, hide_index=True)
         else:
             st.info("No closed trades matching filters.")
     else:
         st.info("No closed trades yet. All positions are currently open.")
-    
-    # Download button
+        
+        # Download button
     csv = df.to_csv(index=False)
-    st.download_button(
+        st.download_button(
         label="📥 Download All Trade History (CSV)",
-        data=csv,
-        file_name=f"trade_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv"
-    )
+            data=csv,
+            file_name=f"trade_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv"
+        )
     
     # Performance by symbol
     if 'symbol' in df.columns and 'pnl' in df.columns:

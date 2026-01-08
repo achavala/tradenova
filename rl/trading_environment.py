@@ -111,10 +111,10 @@ class TradingEnvironment(gym.Env):
         if max_start <= self.lookback_window:
             self.current_step = self.lookback_window
         else:
-            self.current_step = np.random.randint(
-                self.lookback_window,
+        self.current_step = np.random.randint(
+            self.lookback_window,
                 max_start
-            )
+        )
         
         self.balance = self.initial_balance
         self.position = 0

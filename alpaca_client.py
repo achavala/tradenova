@@ -328,7 +328,7 @@ class AlpacaClient:
         except Exception as e:
             logger.error(f"Error checking market status: {e}")
             return False
-    
+
     @retry_with_backoff(max_retries=2, base_delay=1.0)
     def get_clock(self) -> Dict:
         """Get market clock info with retry"""

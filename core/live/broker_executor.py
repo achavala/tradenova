@@ -119,9 +119,9 @@ class BrokerExecutor:
         """
         return self._execute_with_retry(
             order_type='market',
-            symbol=symbol,
-            qty=qty,
-            side=side,
+                    symbol=symbol,
+                    qty=qty,
+                    side=side,
             is_option=is_option
         )
     
@@ -486,7 +486,7 @@ class BrokerExecutor:
             return None
         except Exception as e:
             logger.error(f"Error getting order status: {e}")
-            return None
+        return None
     
     def get_position_book(self) -> Dict:
         """Get current positions with details"""
