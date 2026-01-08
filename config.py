@@ -86,6 +86,62 @@ class Config:
     MAX_DTE_SHORT_TERM = int(os.getenv('MAX_DTE_SHORT_TERM', '6'))
     SHORT_TERM_CONFIDENCE_THRESHOLD = float(os.getenv('SHORT_TERM_CONFIDENCE_THRESHOLD', '0.90'))  # 90%+ confidence only
     
+    # ========== PHASE B: THETA + DTE GOVERNANCE ==========
+    # DTE-based forced exits (time decay protection)
+    DTE_EXIT_RULES = [
+        # (max_dte, min_profit_to_hold) - exit if DTE <= max_dte AND profit < min_profit_to_hold
+        (1, 0.50),   # < 1 DTE: must have +50% profit to hold, otherwise exit
+        (3, 0.20),   # < 3 DTE: must have +20% profit to hold, otherwise exit
+        (5, 0.10),   # < 5 DTE: must have +10% profit to hold, otherwise exit
+    ]
+    
+    # DTE-based position sizing (smaller positions for higher risk)
+    DTE_POSITION_SIZE_MULTIPLIERS = [
+        # (max_dte, size_multiplier) - reduce position size for short DTE
+        (3, 0.50),   # 0-3 DTE: 50% of normal size (higher gamma risk)
+        (7, 0.75),   # 4-7 DTE: 75% of normal size
+        (14, 1.00),  # 8-14 DTE: full size
+    ]
+    
+    # Portfolio theta budget (max daily theta burn in dollars)
+    MAX_DAILY_THETA_BURN = float(os.getenv('MAX_DAILY_THETA_BURN', '500'))  # Max $500/day theta decay
+    
+    # ========== PHASE C: GREEKS & GAMMA CONTROL ==========
+    # Portfolio Greeks limits (absolute values)
+    MAX_PORTFOLIO_DELTA = float(os.getenv('MAX_PORTFOLIO_DELTA', '500'))    # Max net delta exposure
+    MAX_PORTFOLIO_GAMMA = float(os.getenv('MAX_PORTFOLIO_GAMMA', '100'))    # Max gamma exposure
+    MAX_PORTFOLIO_THETA = float(os.getenv('MAX_PORTFOLIO_THETA', '-500'))   # Max negative theta (daily decay)
+    MAX_PORTFOLIO_VEGA = float(os.getenv('MAX_PORTFOLIO_VEGA', '200'))      # Max vega exposure
+    
+    # Position-level gamma limits
+    MAX_POSITION_GAMMA = float(os.getenv('MAX_POSITION_GAMMA', '50'))  # Max gamma per position
+    
+    # ========== PHASE D: IV ENFORCEMENT & STRIKE SELECTION ==========
+    # IV Rank gate (only buy options when IV is relatively low)
+    MAX_IV_RANK_FOR_ENTRY = float(os.getenv('MAX_IV_RANK_FOR_ENTRY', '50'))  # Only enter if IV Rank < 50%
+    MIN_IV_RANK_FOR_ENTRY = float(os.getenv('MIN_IV_RANK_FOR_ENTRY', '10'))  # Avoid extremely low IV (no movement)
+    
+    # Delta-based strike selection
+    DELTA_SELECTION_RULES = [
+        # (min_confidence, max_confidence, target_delta_range)
+        (0.90, 1.00, (0.50, 0.70)),  # High confidence: ITM (delta 0.50-0.70)
+        (0.80, 0.90, (0.35, 0.55)),  # Medium confidence: ATM (delta 0.35-0.55)
+        (0.60, 0.80, (0.20, 0.40)),  # Lower confidence: slightly OTM (delta 0.20-0.40)
+    ]
+    DEFAULT_TARGET_DELTA = (0.35, 0.55)  # Default: ATM range
+    
+    # ========== PHASE E: EXECUTION OPTIMIZATION ==========
+    # Limit order settings
+    USE_LIMIT_ORDERS = bool(os.getenv('USE_LIMIT_ORDERS', 'True').lower() == 'true')
+    LIMIT_ORDER_OFFSET_PCT = float(os.getenv('LIMIT_ORDER_OFFSET_PCT', '0.02'))  # 2% better than mid
+    LIMIT_ORDER_TIMEOUT_SECONDS = int(os.getenv('LIMIT_ORDER_TIMEOUT_SECONDS', '30'))  # Chase after 30s
+    
+    # Time-of-day restrictions (ET timezone)
+    AVOID_FIRST_MINUTES = int(os.getenv('AVOID_FIRST_MINUTES', '30'))   # Avoid first 30 min (9:30-10:00)
+    AVOID_LAST_MINUTES = int(os.getenv('AVOID_LAST_MINUTES', '15'))     # Avoid last 15 min (3:45-4:00)
+    OPTIMAL_TRADING_START = "10:00"  # Best liquidity starts at 10 AM ET
+    OPTIMAL_TRADING_END = "15:45"    # Best liquidity ends at 3:45 PM ET
+    
     # Logging
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
     

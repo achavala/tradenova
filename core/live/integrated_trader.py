@@ -13,6 +13,7 @@ from core.multi_agent_orchestrator import MultiAgentOrchestrator
 from core.live.broker_executor import BrokerExecutor
 from core.risk.advanced_risk_manager import AdvancedRiskManager
 from core.risk.profit_manager import ProfitManager
+from core.risk.options_risk_manager import OptionsRiskManager, PositionGreeks
 from core.agents.base_agent import TradeIntent, TradeDirection
 from alpaca_trade_api.rest import TimeFrame
 from logs.metrics_tracker import MetricsTracker
@@ -146,6 +147,10 @@ class IntegratedTrader:
             max_quote_age_seconds=5.0
         )
         
+        # Options Risk Manager (Phases B-E: Greeks, DTE, IV, Execution)
+        self.options_risk_manager = OptionsRiskManager()
+        logger.info("Options Risk Manager initialized (Phases B-E enabled)")
+        
         # Daily trade budget removed - no limit on trades per day
         
         # Massive price feed (for historical bars)
@@ -203,6 +208,9 @@ class IntegratedTrader:
             # Monitor existing positions
             self._monitor_positions()
             logger.info(f"Current positions: {len(self.positions)}")
+            
+            # PHASE B: CHECK DTE-BASED EXITS (time decay protection)
+            self._check_dte_exits()
             
             # CHECK STOP-LOSSES (CRITICAL RISK MANAGEMENT)
             self._check_stop_losses()
@@ -750,6 +758,64 @@ class IntegratedTrader:
             
             logger.info(f"Option price for {option_symbol}: ${option_price:.2f} (source: {quote_source})")
             
+            # ========== PHASES B-E: OPTIONS RISK MANAGER PRE-TRADE CHECKS ==========
+            
+            # Get IV Rank for IV gate (Phase D)
+            iv_rank = None
+            try:
+                from services.iv_rank_service import IVRankService
+                iv_service = IVRankService()
+                iv_metrics = iv_service.get_iv_metrics(symbol)
+                iv_rank = iv_metrics.get('iv_rank')
+                if iv_rank:
+                    logger.info(f"IV Rank for {symbol}: {iv_rank:.1f}%")
+            except Exception as e:
+                logger.debug(f"Could not get IV Rank for {symbol}: {e}")
+            
+            # Get Greeks from option contract (Phase C)
+            greeks = None
+            try:
+                greeks = {
+                    'delta': float(option_contract.get('delta', 0) or option_contract.get('greeks', {}).get('delta', 0)),
+                    'gamma': float(option_contract.get('gamma', 0) or option_contract.get('greeks', {}).get('gamma', 0)),
+                    'theta': float(option_contract.get('theta', 0) or option_contract.get('greeks', {}).get('theta', 0)),
+                    'vega': float(option_contract.get('vega', 0) or option_contract.get('greeks', {}).get('vega', 0)),
+                    'iv': float(option_contract.get('implied_volatility', 0) or 0),
+                    'underlying_price': current_price
+                }
+                logger.debug(f"Greeks for {option_symbol}: Δ={greeks['delta']:.2f}, Γ={greeks['gamma']:.3f}, Θ={greeks['theta']:.2f}")
+            except Exception as e:
+                logger.debug(f"Could not parse Greeks for {option_symbol}: {e}")
+            
+            # Get DTE
+            dte = selected_dte
+            
+            # Run comprehensive pre-trade checks (Phases B-E)
+            signal_confidence = signal.get('confidence', 0.6)
+            allowed, reasons = self.options_risk_manager.pre_trade_check(
+                symbol=symbol,
+                option_type=option_type,
+                dte=dte,
+                iv_rank=iv_rank,
+                confidence=signal_confidence,
+                greeks=greeks,
+                qty=1  # Will be recalculated after this
+            )
+            
+            # Log all reasons
+            for reason in reasons:
+                if reason.startswith("❌"):
+                    logger.warning(f"PRE-TRADE CHECK: {reason}")
+                else:
+                    logger.info(f"PRE-TRADE CHECK: {reason}")
+            
+            if not allowed:
+                logger.warning(f"🔴 TRADE BLOCKED by Options Risk Manager for {symbol}")
+                return
+            
+            # Phase B: Get DTE-based position size multiplier
+            dte_multiplier = self.options_risk_manager.get_dte_position_size_multiplier(dte)
+            
             # Calculate position size with STRICT risk management
             account = self.client.get_account()
             balance = float(account['equity'])
@@ -766,6 +832,11 @@ class IntegratedTrader:
             # RISK CHECK 2: Max position size = 10% of portfolio (hard cap)
             max_position_pct = getattr(Config, 'MAX_POSITION_PCT', 0.10)  # Hard cap: 10%
             position_capital = balance * max_position_pct
+            
+            # Phase B: Apply DTE-based position size multiplier (reduce for short DTE)
+            position_capital = position_capital * dte_multiplier
+            if dte_multiplier < 1.0:
+                logger.info(f"DTE={dte}: Position reduced to {dte_multiplier:.0%} → ${position_capital:,.2f}")
             
             # Further reduce if we're approaching heat cap
             remaining_heat_room = (balance * max_heat) - current_options_exposure
@@ -891,6 +962,32 @@ class IntegratedTrader:
             
             logger.info(f"Executing OPTIONS trade: {option_symbol} (BUY {contracts} {option_type.upper()} contracts @ ${option_price:.2f})")
             
+            # Phase E: Determine order type (limit vs market)
+            use_market = True
+            limit_price = None
+            
+            # Get bid/ask for limit price calculation
+            try:
+                bid = option_contract.get('bid') or option_contract.get('bid_price')
+                ask = option_contract.get('ask') or option_contract.get('ask_price')
+                
+                if bid and ask:
+                    bid = float(bid)
+                    ask = float(ask)
+                    mid = (bid + ask) / 2
+                    spread_pct = (ask - bid) / mid if mid > 0 else 1.0
+                    
+                    use_market, reason = self.options_risk_manager.should_use_market_order(spread_pct)
+                    
+                    if not use_market:
+                        # Calculate limit price slightly below mid (for buy)
+                        limit_price = self.options_risk_manager.calculate_limit_price(bid, ask, 'buy')
+                        logger.info(f"Phase E: Using LIMIT order @ ${limit_price:.2f} (bid=${bid:.2f}, ask=${ask:.2f}, spread={spread_pct:.1%})")
+                    else:
+                        logger.info(f"Phase E: Using MARKET order ({reason})")
+            except Exception as e:
+                logger.debug(f"Could not calculate limit price, using market order: {e}")
+            
             # Execute order (or simulate in dry-run)
             if self.dry_run:
                 logger.info(f"[DRY RUN] Would execute: {option_symbol} BUY {contracts} contracts @ ${option_price:.2f}")
@@ -901,13 +998,34 @@ class IntegratedTrader:
                     'symbol': option_symbol
                 }
             else:
-                # Execute options order via executor (with is_option=True)
-                order = self.executor.execute_market_order(
-                    symbol=option_symbol,
-                    qty=contracts,
-                    side='buy',
-                    is_option=True
-                )
+                # Execute options order via executor
+                if use_market or limit_price is None:
+                    order = self.executor.execute_market_order(
+                        symbol=option_symbol,
+                        qty=contracts,
+                        side='buy',
+                        is_option=True
+                    )
+                else:
+                    # Use limit order
+                    order = self.executor.execute_limit_order(
+                        symbol=option_symbol,
+                        qty=contracts,
+                        side='buy',
+                        limit_price=limit_price,
+                        is_option=True,
+                        time_in_force='day'
+                    )
+                    
+                    # If limit order not filled immediately, fallback to market
+                    if order and order.get('status') not in ['filled', 'partially_filled']:
+                        logger.info(f"Limit order not filled, falling back to market order")
+                        order = self.executor.execute_market_order(
+                            symbol=option_symbol,
+                            qty=contracts,
+                            side='buy',
+                            is_option=True
+                        )
             
             if order and order.get('status') == 'filled':
                 filled_price = order.get('filled_avg_price', option_price)
@@ -960,6 +1078,62 @@ class IntegratedTrader:
         except Exception as e:
             logger.error(f"Error calculating options exposure: {e}")
             return 0.0
+    
+    def _check_dte_exits(self):
+        """Phase B: Check all positions for DTE-based forced exits"""
+        try:
+            positions = self.client.get_positions()
+            today = datetime.now().date()
+            
+            for pos in positions:
+                symbol = pos.get('symbol', '')
+                unrealized_plpc = float(pos.get('unrealized_plpc', 0))
+                qty = int(float(pos.get('qty', 0)))
+                
+                # Skip non-options or empty positions
+                if len(symbol) <= 10 or qty <= 0:
+                    continue
+                
+                # Parse DTE from option symbol (format: SYMBOL YYMMDD C/P STRIKE)
+                try:
+                    # Extract expiration from option symbol (e.g., NVDA250117P00140000)
+                    # Find the date portion (6 digits after the underlying)
+                    import re
+                    match = re.search(r'(\d{6})[CP]', symbol)
+                    if match:
+                        exp_str = match.group(1)
+                        exp_date = datetime.strptime(exp_str, '%y%m%d').date()
+                        dte = (exp_date - today).days
+                        
+                        # Check DTE exit rules
+                        should_exit, reason = self.options_risk_manager.check_dte_exit(
+                            symbol, dte, unrealized_plpc
+                        )
+                        
+                        if should_exit:
+                            logger.warning(f"🕐 DTE EXIT: {symbol} (DTE={dte}, P&L={unrealized_plpc:.1%})")
+                            try:
+                                from core.live.options_broker_client import OptionsBrokerClient
+                                options_client = OptionsBrokerClient(self.client)
+                                result = options_client.place_option_order(
+                                    option_symbol=symbol,
+                                    qty=qty,
+                                    side='sell',
+                                    order_type='market'
+                                )
+                                if result:
+                                    logger.info(f"✅ DTE EXIT EXECUTED: Sold {qty} {symbol}")
+                                    if symbol in self.positions:
+                                        del self.positions[symbol]
+                                    # Remove from Greeks tracking
+                                    self.options_risk_manager.remove_position_greeks(symbol)
+                            except Exception as e:
+                                logger.error(f"Error executing DTE exit for {symbol}: {e}")
+                except Exception as e:
+                    logger.debug(f"Could not parse DTE from {symbol}: {e}")
+        
+        except Exception as e:
+            logger.error(f"Error in DTE exit check: {e}")
     
     def _check_stop_losses(self):
         """Check all positions for stop-loss triggers and close if needed"""
