@@ -1,6 +1,13 @@
 """
 Integrated Trader
 Combines RL predictions, multi-agent system, execution, and risk management
+
+ARCHITECT 3 & 4 ENHANCEMENTS:
+- Strict data source validation (Massive only for signals)
+- Per-symbol ticker configuration (Tier A/B/C)
+- Scalp vs Swing playbook separation
+- Gamma-based size reductions
+- Enhanced liquidity filters
 """
 import logging
 from typing import Dict, List, Optional
@@ -14,6 +21,9 @@ from core.live.broker_executor import BrokerExecutor
 from core.risk.advanced_risk_manager import AdvancedRiskManager
 from core.risk.profit_manager import ProfitManager
 from core.risk.options_risk_manager import OptionsRiskManager, PositionGreeks
+from core.risk.ticker_config import TickerConfigManager, ticker_config_manager, TickerTier
+from core.risk.trading_playbook import PlaybookManager, playbook_manager, PlaybookMode
+from core.data.data_validator import DataValidator, data_validator, validate_bar_age
 from core.agents.base_agent import TradeIntent, TradeDirection
 from alpaca_trade_api.rest import TimeFrame
 from logs.metrics_tracker import MetricsTracker
@@ -357,8 +367,22 @@ class IntegratedTrader:
         end_date = datetime.now()
         start_date = end_date - timedelta(days=60)
         
+        # Reset data validator for this cycle
+        data_validator.reset_cycle()
+        
         for symbol in Config.TICKERS:
             signals_checked += 1
+            
+            # ============================================================
+            # ARCHITECT 3 & 4: TICKER TIER VALIDATION
+            # ============================================================
+            ticker_config = ticker_config_manager.get_config(symbol)
+            if not ticker_config:
+                logger.warning(f"[{symbol}] No ticker config - skipping")
+                continue
+            
+            logger.debug(f"[{symbol}] Tier: {ticker_config.tier.value} | Scalp allowed: {ticker_config.scalp_allowed}")
+            
             # Check if we already have an option position for this underlying
             has_position = False
             for pos_symbol in self.positions.keys():
@@ -371,8 +395,12 @@ class IntegratedTrader:
                 continue
             
             try:
-                # Get historical bars - prefer Massive, fallback to Alpaca
+                # ============================================================
+                # ARCHITECT 3 & 4: STRICT DATA SOURCE VALIDATION
+                # Massive REQUIRED for signals - NO Alpaca fallback for paper mode
+                # ============================================================
                 bars = None
+                data_source = "unknown"
                 
                 if self.massive_price_feed and self.massive_price_feed.is_available():
                     try:
@@ -380,18 +408,35 @@ class IntegratedTrader:
                         bars = self.massive_price_feed.get_daily_bars(
                             symbol, start_date, end_date, use_1min_aggregation=True
                         )
-                        if not bars.empty:
-                            logger.debug(f"Got {len(bars)} daily bars from Massive for {symbol}")
+                        if bars is not None and not bars.empty:
+                            data_source = "massive"
+                            logger.debug(f"[{symbol}] Got {len(bars)} daily bars from Massive")
                     except Exception as e:
-                        logger.warning(f"Error getting bars from Massive for {symbol}: {e}, falling back to Alpaca")
+                        logger.warning(f"[{symbol}] Massive error: {e}")
+                        bars = None
                 
-                # Fallback to Alpaca if Massive failed or not available
+                # CRITICAL: In paper mode, do NOT fall back to Alpaca for signals
+                # Alpaca Paper data is 15-min delayed which poisons indicators
                 if bars is None or bars.empty:
-                    bars = self.client.get_historical_bars(
-                        symbol, TimeFrame.Day, start_date, end_date
-                    )
-                    if not bars.empty:
-                        logger.debug(f"Got {len(bars)} daily bars from Alpaca for {symbol}")
+                    if self.paper_trading:
+                        # ARCHITECT 3 RULE: Skip ticker if Massive unavailable
+                        logger.warning(f"[{symbol}] SKIPPED: Massive data unavailable, no Alpaca fallback in paper mode")
+                        continue
+                    else:
+                        # Live mode: Alpaca data is real-time, fallback OK
+                        bars = self.client.get_historical_bars(
+                            symbol, TimeFrame.Day, start_date, end_date
+                        )
+                        if bars is not None and not bars.empty:
+                            data_source = "alpaca_live"
+                            logger.debug(f"[{symbol}] Got {len(bars)} daily bars from Alpaca (live)")
+                
+                # Validate data freshness
+                if bars is not None and not bars.empty:
+                    is_fresh, age_seconds = validate_bar_age(bars, symbol, max_age_seconds=300)  # 5 min for daily bars
+                    if not is_fresh:
+                        logger.warning(f"[{symbol}] SKIPPED: Stale data ({age_seconds}s old)")
+                        continue
                 
                 if bars.empty or len(bars) < 30:  # Reduced from 50 to 30 (with Massive, should always have enough)
                     logger.warning(f"Insufficient data for {symbol}: {len(bars)} bars (need 30+)")
@@ -813,6 +858,12 @@ class IntegratedTrader:
                 logger.warning(f"🔴 TRADE BLOCKED by Options Risk Manager for {symbol}")
                 return
             
+            # ============================================================
+            # ARCHITECT 3: PLAYBOOK MODE DETERMINATION (Scalp vs Swing)
+            # ============================================================
+            playbook_mode, playbook = playbook_manager.get_playbook_for_dte(dte)
+            logger.info(f"[{symbol}] Playbook Mode: {playbook_mode.value.upper()} (DTE={dte})")
+            
             # Phase B: Get DTE-based position size multiplier
             dte_multiplier = self.options_risk_manager.get_dte_position_size_multiplier(dte)
             
@@ -829,14 +880,36 @@ class IntegratedTrader:
                 logger.warning(f"   Skipping {symbol} trade to protect portfolio")
                 return
             
-            # RISK CHECK 2: Max position size = 10% of portfolio (hard cap)
-            max_position_pct = getattr(Config, 'MAX_POSITION_PCT', 0.10)  # Hard cap: 10%
+            # ============================================================
+            # ARCHITECT 3 & 4: TICKER-SPECIFIC & PLAYBOOK POSITION SIZE
+            # ============================================================
+            # Get ticker-specific max position from config
+            ticker_config = ticker_config_manager.get_config(symbol)
+            ticker_max_position = ticker_config.max_position_pct if ticker_config else 0.10
+            
+            # Get playbook max position (scalp = smaller, swing = larger)
+            playbook_max_position = playbook.max_position_pct
+            
+            # Use the SMALLER of ticker config and playbook
+            max_position_pct = min(ticker_max_position, playbook_max_position, getattr(Config, 'MAX_POSITION_PCT', 0.10))
             position_capital = balance * max_position_pct
+            logger.info(f"[{symbol}] Position cap: {max_position_pct:.0%} (Ticker: {ticker_max_position:.0%}, Playbook: {playbook_max_position:.0%})")
             
             # Phase B: Apply DTE-based position size multiplier (reduce for short DTE)
             position_capital = position_capital * dte_multiplier
             if dte_multiplier < 1.0:
                 logger.info(f"DTE={dte}: Position reduced to {dte_multiplier:.0%} → ${position_capital:,.2f}")
+            
+            # ============================================================
+            # ARCHITECT 4: GAMMA-BASED SIZE REDUCTION
+            # ============================================================
+            option_gamma = greeks.get('gamma', 0) if greeks else 0
+            max_gamma = playbook_manager.get_gamma_limit(dte)
+            
+            if option_gamma > max_gamma:
+                # High gamma risk - reduce position by 50%
+                position_capital = position_capital * 0.5
+                logger.warning(f"⚠️ HIGH GAMMA ({option_gamma:.2f} > {max_gamma:.2f}): Position reduced 50% → ${position_capital:,.2f}")
             
             # Further reduce if we're approaching heat cap
             remaining_heat_room = (balance * max_heat) - current_options_exposure
@@ -1080,10 +1153,26 @@ class IntegratedTrader:
             return 0.0
     
     def _check_dte_exits(self):
-        """Phase B: Check all positions for DTE-based forced exits"""
+        """
+        Phase B: Check all positions for DTE-based forced exits
+        
+        ARCHITECT 4 RULES:
+        - 0DTE: Exit 2 hours before close if P&L < 10%
+        - 1-3 DTE: Apply DTE exit rules from OptionsRiskManager
+        """
         try:
+            import pytz
+            ET = pytz.timezone('America/New_York')
+            
             positions = self.client.get_positions()
             today = datetime.now().date()
+            now_et = datetime.now(ET)
+            current_time = now_et.time()
+            
+            # Calculate minutes until market close (4 PM ET)
+            market_close_hour = 16
+            market_close_minute = 0
+            minutes_to_close = (market_close_hour - current_time.hour) * 60 + (market_close_minute - current_time.minute)
             
             for pos in positions:
                 symbol = pos.get('symbol', '')
@@ -1104,6 +1193,23 @@ class IntegratedTrader:
                         exp_str = match.group(1)
                         exp_date = datetime.strptime(exp_str, '%y%m%d').date()
                         dte = (exp_date - today).days
+                        
+                        # ============================================================
+                        # ARCHITECT 4: STRICT 0DTE TIME-BASED EXIT
+                        # Exit 2 hours (120 min) before close if profit < 10%
+                        # ============================================================
+                        if dte == 0 and minutes_to_close <= 120:
+                            if unrealized_plpc < 0.10:  # Less than 10% profit
+                                logger.warning(f"⏰ 0DTE TIME EXIT: {symbol} | {minutes_to_close} min to close | P&L={unrealized_plpc:.1%} < 10%")
+                                self._execute_forced_exit(symbol, qty, f"0DTE time exit ({minutes_to_close} min to close)")
+                                continue
+                        
+                        # Check playbook time-based exits
+                        should_exit_time, time_reason = playbook_manager.check_time_exit(dte, unrealized_plpc)
+                        if should_exit_time:
+                            logger.warning(f"⏰ PLAYBOOK TIME EXIT: {symbol} | {time_reason}")
+                            self._execute_forced_exit(symbol, qty, time_reason)
+                            continue
                         
                         # Check DTE exit rules
                         should_exit, reason = self.options_risk_manager.check_dte_exit(
@@ -1134,6 +1240,38 @@ class IntegratedTrader:
         
         except Exception as e:
             logger.error(f"Error in DTE exit check: {e}")
+    
+    def _execute_forced_exit(self, symbol: str, qty: int, reason: str):
+        """
+        Execute a forced exit for a position
+        
+        Args:
+            symbol: Option symbol
+            qty: Number of contracts to sell
+            reason: Reason for the exit
+        """
+        try:
+            from core.live.options_broker_client import OptionsBrokerClient
+            options_client = OptionsBrokerClient(self.client)
+            
+            result = options_client.place_option_order(
+                option_symbol=symbol,
+                qty=qty,
+                side='sell',
+                order_type='market'
+            )
+            
+            if result:
+                logger.info(f"✅ FORCED EXIT EXECUTED: Sold {qty} {symbol} | Reason: {reason}")
+                if symbol in self.positions:
+                    del self.positions[symbol]
+                # Remove from Greeks tracking
+                self.options_risk_manager.remove_position_greeks(symbol)
+            else:
+                logger.error(f"❌ Failed to execute forced exit for {symbol}")
+                
+        except Exception as e:
+            logger.error(f"Error executing forced exit for {symbol}: {e}")
     
     def _check_stop_losses(self):
         """Check all positions for stop-loss triggers and close if needed"""
