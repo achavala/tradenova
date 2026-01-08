@@ -24,11 +24,27 @@ from core.live.signal_capture import SignalCapture
 from config import Config
 from logs.metrics_tracker import MetricsTracker
 
+from logging.handlers import TimedRotatingFileHandler
+
+# Ensure logs directory exists
+Path('logs').mkdir(exist_ok=True)
+
+# Create daily rotating file handler
+# Rotates at midnight, keeps 30 days of logs
+file_handler = TimedRotatingFileHandler(
+    'logs/tradenova_daily.log',
+    when='midnight',
+    interval=1,
+    backupCount=30,
+    encoding='utf-8'
+)
+file_handler.suffix = '%Y-%m-%d'  # Creates files like tradenova_daily.log.2026-01-07
+
 logging.basicConfig(
     level=getattr(logging, Config.LOG_LEVEL),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('logs/tradenova_daily.log'),
+        file_handler,
         logging.StreamHandler()
     ]
 )
